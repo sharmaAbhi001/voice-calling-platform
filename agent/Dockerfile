@@ -44,6 +44,15 @@ RUN npm run build -w agent
 FROM node:22-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
+# Required, not hygiene. @livekit/rtc-node is a Rust addon that uses rustls, which
+# reads the OS trust store - unlike Node's own TLS, which has root CAs compiled into
+# the binary. Without this the worker still reaches LiveKit over Node TLS and logs
+# "registered worker", then every dispatched job dies inside Room.connect with
+# "no native root CA certificates found": the call connects, the agent never joins
+# the room, and the customer hears silence. This stage starts from a clean
+# node:22-slim, so it does not inherit the certificates installed in `base`.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/shared ./shared
 COPY --from=build /app/agent/dist ./agent/dist
