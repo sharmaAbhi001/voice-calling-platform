@@ -15,7 +15,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "composite": true,
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src"]
