@@ -49,23 +49,32 @@ COPY --from=build /app/shared ./shared
 COPY --from=build /app/agent/dist ./agent/dist
 COPY --from=build /app/agent/package.json ./agent/package.json
 
-# The weights resolve against $HOME/.cache/huggingface/hub. Docker does not
-# reliably set HOME from the USER instruction, so pin it: the download below and
-# the worker at runtime must agree on one path, or the worker crash-loops with
-# "File not found in cache".
-USER node
-ENV HOME=/home/node
-
 # Same reasoning as the development stage: the turn-detector and VAD weights are
 # fetched separately from the npm package, so bake them in. Without this the
 # worker dies at boot, and pulling them on first start would cost the first call.
 # The agent validates its environment at import, so the download runs with
 # throwaway placeholders - it contacts no provider, it only fetches model files.
-RUN LIVEKIT_URL=ws://placeholder \
+#
+# Two caches, two locations, and both have to survive into the runtime user:
+#   - the ONNX weights go to $HOME/.cache/huggingface/hub, so HOME is pinned
+#     here because Docker does not reliably derive it from USER
+#   - the tokenizer goes to transformers.js's own directory inside node_modules,
+#     which is root-owned - hence downloading as root and chowning afterwards
+# The tests at the end make a silent partial download fail the build instead of
+# shipping an image that crash-loops on boot.
+ENV HOME=/home/node
+RUN set -eux; \
+    LIVEKIT_URL=ws://placeholder \
     LIVEKIT_API_KEY=placeholder \
     LIVEKIT_API_SECRET=placeholder \
     AGENT_API_KEY=placeholder-key \
     OPENAI_API_KEY=placeholder \
-    node agent/dist/agent.js download-files
+    node agent/dist/agent.js download-files; \
+    test -f /app/node_modules/@huggingface/transformers/models/livekit/turn-detector/tokenizer.json; \
+    test -d /home/node/.cache/huggingface/hub/models--livekit--turn-detector; \
+    chown -R node:node /home/node/.cache \
+      /app/node_modules/@huggingface/transformers/models
+
+USER node
 # "start" mode registers the worker with LiveKit and waits for dispatch.
 CMD ["node", "agent/dist/agent.js", "start"]
