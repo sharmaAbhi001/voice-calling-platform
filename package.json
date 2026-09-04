@@ -1,0 +1,34 @@
+{
+  "name": "voice-calling-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "backend",
+    "agent",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run build:shared && npm-run-all --parallel dev:backend dev:agent dev:frontend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:agent": "npm run dev -w agent",
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:local": "npm run build:shared && npm-run-all --parallel dev:backend dev:frontend",
+    "build": "npm run build -w shared && npm run build -w backend && npm run build -w agent && npm run build -w frontend",
+    "migrate": "npm run migrate -w backend",
+    "seed": "npm run seed -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w agent && npm run typecheck -w frontend",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d postgres",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "trunk:build": "node scripts/build-sip-trunk.mjs",
+    "agent:docker": "docker compose -f docker-compose.agent.yml up --build",
+    "agent:docker:down": "docker compose -f docker-compose.agent.yml down",
+    "build:shared": "npm run build -w shared",
+    "postinstall": "npm run build -w shared"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,32 @@
+# Agent-only stack: runs the LiveKit worker in Linux while the backend and
+# frontend keep running natively on the host.
+#
+#   npm run agent:docker          # build + run, logs in the foreground
+#   npm run agent:docker:down     # stop it
+#
+# Why: the VAD and turn-detection models run through onnxruntime-node, whose
+# native binding needs the Microsoft Visual C++ runtime on Windows. Rather than
+# installing that system-wide, run the worker on Linux where the dependency is
+# already satisfied. The agent speaks to LiveKit and the backend over the network,
+# so nothing else has to move into a container.
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+      target: development
+    container_name: voiceops-agent
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # The backend runs on the host, not in this network.
+      BACKEND_URL: http://host.docker.internal:4000
+    extra_hosts:
+      # Docker Desktop resolves this already; the mapping keeps plain Linux hosts working.
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      # Same hot reload as `npm run dev:agent`. node_modules stays the image's own,
+      # so the Linux onnxruntime binary is never shadowed by the host's.
+      - ./agent/src:/app/agent/src
+      - ./shared:/app/shared
+    command: npm run dev -w agent

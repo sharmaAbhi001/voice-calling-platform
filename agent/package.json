@@ -1,0 +1,30 @@
+{
+    "name": "@voiceops/agent",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "tsx src/agent.ts dev",
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/agent.js start",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "download-files": "tsx src/agent.ts download-files"
+    },
+    "dependencies": {
+        "@livekit/agents": "^1.7.1",
+        "@livekit/agents-plugin-deepgram": "^1.7.1",
+        "@livekit/agents-plugin-livekit": "^1.7.1",
+        "@livekit/agents-plugin-openai": "^1.7.1",
+        "@livekit/agents-plugin-sarvam": "^1.7.1",
+        "@livekit/agents-plugin-silero": "^1.7.1",
+        "@voiceops/shared": "*",
+        "dotenv": "^16.4.5",
+        "livekit-server-sdk": "^2.18.0",
+        "zod": "^3.23.8"
+    },
+    "devDependencies": {
+        "@types/node": "^22.9.0",
+        "tsx": "^4.19.2",
+        "typescript": "^5.6.3"
+    }
+}

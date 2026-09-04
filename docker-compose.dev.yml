@@ -1,0 +1,75 @@
+services:
+  postgres:
+    # pgvector is required: knowledge chunks are stored as vector(1536).
+    image: pgvector/pgvector:pg16
+    container_name: voiceops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: voiceops
+      POSTGRES_PASSWORD: voiceops
+      POSTGRES_DB: voiceops
+    ports:
+      - '5432:5432'
+    volumes:
+      # Named volume: development data survives container restarts.
+      - voiceops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U voiceops -d voiceops']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: development
+    container_name: voiceops-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://voiceops:voiceops@postgres:5432/voiceops
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/backend/src
+      - ./shared:/app/shared
+    command: npm run dev -w backend
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+      target: development
+    container_name: voiceops-agent
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
+    volumes:
+      - ./agent/src:/app/agent/src
+      - ./shared:/app/shared
+    command: npm run dev -w agent
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: development
+    container_name: voiceops-frontend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend/src:/app/frontend/src
+      - ./shared:/app/shared
+    command: npm run dev -w frontend -- --host 0.0.0.0
+
+volumes:
+  voiceops_pgdata:

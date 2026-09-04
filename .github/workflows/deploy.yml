@@ -1,0 +1,159 @@
+name: Build and deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_seed:
+        description: 'Run the database seed after migrating (idempotent, but calls the embeddings API on first run)'
+        type: boolean
+        default: false
+
+# id-token is what lets the job assume the AWS role over OIDC, so no long-lived
+# access keys are stored in this repository.
+permissions:
+  id-token: write
+  contents: read
+
+# One deploy at a time: two overlapping runs would fight over the same instance.
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            dockerfile: backend/Dockerfile
+            build_args: ''
+          - service: agent
+            dockerfile: agent/Dockerfile
+            build_args: ''
+          - service: frontend
+            dockerfile: frontend/Dockerfile
+            # Vite bakes the API URL in at build time. Relative, because nginx in
+            # the frontend image proxies /api to the backend on the same origin.
+            build_args: VITE_API_BASE_URL=/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: production
+          push: true
+          provenance: false
+          build-args: ${{ matrix.build_args }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/voiceops-${{ matrix.service }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/voiceops-${{ matrix.service }}:latest
+          # Layer cache lives in GitHub, keyed per service so the three builds do
+          # not evict each other. The agent image especially benefits.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Send deploy command over SSM
+        id: ssm
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          RUN_SEED: ${{ inputs.run_seed || false }}
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          # The compose file and the deploy script travel inside the SSM command
+          # itself, base64 encoded. That keeps them version-controlled here and
+          # means the instance needs no git checkout and no repository access.
+          COMPOSE_B64=$(base64 -w0 docker-compose.prod.yml)
+          SCRIPT_B64=$(base64 -w0 scripts/ec2-deploy.sh)
+
+          jq -n \
+            --arg compose "$COMPOSE_B64" \
+            --arg script  "$SCRIPT_B64" \
+            --arg reg     "$REGISTRY" \
+            --arg tag     "$GITHUB_SHA" \
+            --arg region  "$AWS_REGION" \
+            --arg seed    "$RUN_SEED" \
+            '{
+              commands: [
+                "set -euo pipefail",
+                "mkdir -p /opt/voiceagent",
+                ("echo " + $compose + " | base64 -d > /opt/voiceagent/docker-compose.yml"),
+                ("echo " + $script  + " | base64 -d > /opt/voiceagent/deploy.sh"),
+                ("ECR_REGISTRY=" + $reg + " IMAGE_TAG=" + $tag + " AWS_REGION=" + $region
+                  + " RUN_SEED=" + $seed + " bash /opt/voiceagent/deploy.sh")
+              ],
+              executionTimeout: ["1200"]
+            }' > /tmp/ssm-params.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${GITHUB_SHA:0:7}" \
+            --parameters file:///tmp/ssm-params.json \
+            --query Command.CommandId --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM command: $COMMAND_ID"
+
+      - name: Wait for the deploy to finish
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
+        run: |
+          set -uo pipefail
+
+          # get-command-invocation 404s for a moment after send-command.
+          sleep 5
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query Status --output text)
+
+          echo "--- stdout ---"
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "--- stderr ---"
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text
+            echo "Deploy finished with status: $STATUS"
+            exit 1
+          fi
+          echo "Deploy succeeded."

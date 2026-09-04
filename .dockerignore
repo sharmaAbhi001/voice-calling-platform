@@ -1,0 +1,16 @@
+# Keeps the build context small: three images are built per deploy, and the repo
+# carries a node_modules tree far larger than the sources.
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.github
+coverage
+data
+*.log
+*.tsbuildinfo
+# Never bake real secrets into an image. .env.example still ships, which is what
+# the frontend build stage's `COPY .env*` matches.
+.env
+outbound-trunk.json

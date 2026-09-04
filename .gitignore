@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+data/
+*.tsbuildinfo
+# Generated from .env by `npm run trunk:build` - contains carrier SIP credentials.
+outbound-trunk.json
+docs/

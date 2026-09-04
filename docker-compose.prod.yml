@@ -1,0 +1,61 @@
+# Production stack for the EC2 box. Unlike docker-compose.yml this never builds:
+# every image is pulled from ECR by tag, which is what the GitHub Actions deploy
+# pushes. Copied to /opt/voiceagent/docker-compose.yml by scripts/ec2-deploy.sh.
+#
+# Interpolated variables (ECR_REGISTRY, IMAGE_TAG) come from the deploy script's
+# shell. Everything else lives in /opt/voiceagent/.env on the instance.
+name: voiceops
+
+services:
+  # MVP: Postgres runs on the box in a container, with pgvector for the knowledge
+  # base embeddings. No published port, so it is reachable only from this network.
+  # Durability is the named volume below - back it up before you rely on it.
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-voiceops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voiceops}
+      POSTGRES_DB: ${POSTGRES_DB:-voiceops}
+    volumes:
+      - voiceops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-voiceops}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${ECR_REGISTRY}/voiceops-backend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://backend:4000
+    # Not published: nginx proxies /api to it inside the compose network.
+    expose:
+      - '4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  agent:
+    image: ${ECR_REGISTRY}/voiceops-agent:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
+
+  frontend:
+    image: ${ECR_REGISTRY}/voiceops-frontend:${IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+
+volumes:
+  voiceops_pgdata:
