@@ -70,10 +70,17 @@ RUN set -eux; \
     AGENT_API_KEY=placeholder-key \
     OPENAI_API_KEY=placeholder \
     node agent/dist/agent.js download-files; \
-    test -f /app/node_modules/@huggingface/transformers/models/livekit/turn-detector/tokenizer.json; \
-    test -d /home/node/.cache/huggingface/hub/models--livekit--turn-detector; \
-    chown -R node:node /home/node/.cache \
-      /app/node_modules/@huggingface/transformers/models
+    echo '===== HOME ====='; echo "HOME=$HOME"; \
+    echo '===== every model file the download produced ====='; \
+    find / \( -name 'tokenizer.json' -o -name '*.onnx' \) \
+      -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null | head -40; \
+    echo '===== transformers.js model dir ====='; \
+    find /app/node_modules/@huggingface/transformers -maxdepth 2 2>/dev/null | head -20; \
+    echo '===== hugging face caches ====='; \
+    find /home/node/.cache /root/.cache -maxdepth 5 2>/dev/null | head -40; \
+    echo '===== end diagnostics ====='; \
+    chown -R node:node /home/node/.cache 2>/dev/null || true; \
+    chown -R node:node /app/node_modules/@huggingface 2>/dev/null || true
 
 USER node
 # "start" mode registers the worker with LiveKit and waits for dispatch.
