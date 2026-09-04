@@ -1,0 +1,33 @@
+# Edge proxy for the production stack. Caddy obtains and renews the TLS
+# certificate from Let's Encrypt on its own, so nothing has to be copied into an
+# image and nothing expires silently. It also redirects HTTP to HTTPS by default,
+# which is why no :80 site block appears here.
+#
+# The certificate lives in the caddy_data volume. Do not delete that volume
+# casually - re-issuing runs into Let's Encrypt rate limits (5 per domain per week).
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# The backend mounts its routers at the root (/auth, /calls, ...), so the
+	# /api prefix is stripped here. handle_path does the strip; handle would not.
+	handle_path /api/* {
+		reverse_proxy backend:4000 {
+			# Long enough for knowledge-base indexing, which calls the
+			# embeddings API while the request is open.
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+
+	# Everything else is the SPA, served by the nginx inside the frontend image.
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

@@ -52,10 +52,37 @@ services:
   frontend:
     image: ${ECR_REGISTRY}/voiceops-frontend:${IMAGE_TAG}
     restart: unless-stopped
+    # Not published any more: Caddy terminates TLS and proxies to it.
+    expose:
+      - '80'
+    depends_on:
+      - backend
+
+  # Edge proxy. Owns 80/443 and gets its own certificate from Let's Encrypt,
+  # so no cert material is baked into an image or renewed by hand.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
     ports:
       - '80:80'
+      - '443:443'
+      # HTTP/3. Harmless if the security group does not allow UDP.
+      - '443:443/udp'
+    environment:
+      # Deliberately fail fast: a blank domain would make Caddy serve nothing
+      # and burn Let's Encrypt attempts on an invalid name.
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in /opt/voiceagent/.env, e.g. codecampus.in}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
+      - frontend
       - backend
 
 volumes:
   voiceops_pgdata:
+  # Holds the issued certificates. Losing this forces re-issuance, which is
+  # rate limited, so treat it like the database volume.
+  caddy_data:
+  caddy_config:

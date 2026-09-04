@@ -95,15 +95,17 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-          # The compose file and the deploy script travel inside the SSM command
-          # itself, base64 encoded. That keeps them version-controlled here and
-          # means the instance needs no git checkout and no repository access.
+          # The compose file, the deploy script and the Caddyfile travel inside the
+          # SSM command itself, base64 encoded. That keeps them version-controlled
+          # here and means the instance needs no git checkout and no repo access.
           COMPOSE_B64=$(base64 -w0 docker-compose.prod.yml)
           SCRIPT_B64=$(base64 -w0 scripts/ec2-deploy.sh)
+          CADDY_B64=$(base64 -w0 docker/caddy/Caddyfile)
 
           jq -n \
             --arg compose "$COMPOSE_B64" \
             --arg script  "$SCRIPT_B64" \
+            --arg caddy   "$CADDY_B64" \
             --arg reg     "$REGISTRY" \
             --arg tag     "$GITHUB_SHA" \
             --arg region  "$AWS_REGION" \
@@ -114,6 +116,7 @@ jobs:
                 "mkdir -p /opt/voiceagent",
                 ("echo " + $compose + " | base64 -d > /opt/voiceagent/docker-compose.yml"),
                 ("echo " + $script  + " | base64 -d > /opt/voiceagent/deploy.sh"),
+                ("echo " + $caddy   + " | base64 -d > /opt/voiceagent/Caddyfile"),
                 ("ECR_REGISTRY=" + $reg + " IMAGE_TAG=" + $tag + " AWS_REGION=" + $region
                   + " RUN_SEED=" + $seed + " bash /opt/voiceagent/deploy.sh")
               ],
