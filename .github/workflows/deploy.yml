@@ -46,6 +46,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # TEMPORARY - delete once the role assumption works. Prints the claims the
+      # IAM trust policy is matched against, so a mismatch is visible instead of
+      # being hidden behind STS's deliberately vague "Not authorized" message.
+      # Claims are not secret; the token itself is never printed.
+      - name: Debug OIDC claims
+        if: matrix.service == 'backend'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const claims = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString(),
+            );
+            core.info(`sub = ${claims.sub}`);
+            core.info(`aud = ${claims.aud}`);
+            core.info(`repository = ${claims.repository}`);
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
