@@ -46,22 +46,84 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TEMPORARY - delete once the role assumption works. Prints the claims the
-      # IAM trust policy is matched against, so a mismatch is visible instead of
-      # being hidden behind STS's deliberately vague "Not authorized" message.
-      # Claims are not secret; the token itself is never printed.
-      - name: Debug OIDC claims
-        if: matrix.service == 'backend'
+      # TEMPORARY - delete this whole step once the role assumption works.
+      # It answers the two questions STS's vague "Not authorized" hides: did the
+      # secrets arrive in the job at all, and what claims is the trust policy
+      # actually being matched against. No secret value is printed - only its
+      # length, its shape, and the OIDC claims, which are not secret.
+      - name: Debug secrets and OIDC claims
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         uses: actions/github-script@v7
         with:
           script: |
+            let ok = true;
+
+            const report = (name, raw) => {
+              if (!raw) {
+                core.error(`${name}: EMPTY - the secret is unset, misspelled, or scoped to an environment this job does not declare`);
+                ok = false;
+                return null;
+              }
+              core.info(`${name}: present, length=${raw.length}`);
+              // A trailing newline from a copy-paste is invisible in the UI and
+              // makes the ARN fail to match while looking perfectly correct.
+              if (raw.trim() !== raw) {
+                core.warning(`${name}: has leading/trailing whitespace`);
+                ok = false;
+              }
+              if (/[
+]/.test(raw)) {
+                core.warning(`${name}: contains a newline`);
+                ok = false;
+              }
+              return raw.trim();
+            };
+
+            core.startGroup('Repository secrets');
+            const arn = report('AWS_DEPLOY_ROLE_ARN', process.env.ROLE_ARN);
+            const instance = report('EC2_INSTANCE_ID', process.env.INSTANCE_ID);
+
+            if (arn) {
+              const m = arn.match(/^arn:aws:iam::(\d{12}):role\/(.+)$/);
+              if (m) {
+                core.info(`  account  = ****${m[1].slice(-4)}`);
+                core.info(`  roleName = ${m[2]}`);
+              } else {
+                core.error('  not a valid role ARN - expected arn:aws:iam::<12 digits>:role/<name>');
+                ok = false;
+              }
+            }
+            if (instance && !/^i-[0-9a-f]{8,17}$/.test(instance)) {
+              core.error('  EC2_INSTANCE_ID does not look like an instance id (i-0123456789abcdef0)');
+              ok = false;
+            }
+            core.endGroup();
+
+            core.startGroup('OIDC claims (what the trust policy is matched against)');
             const token = await core.getIDToken('sts.amazonaws.com');
             const claims = JSON.parse(
               Buffer.from(token.split('.')[1], 'base64url').toString(),
             );
-            core.info(`sub = ${claims.sub}`);
-            core.info(`aud = ${claims.aud}`);
-            core.info(`repository = ${claims.repository}`);
+            for (const key of ['sub', 'aud', 'iss', 'repository', 'repository_owner', 'ref', 'workflow_ref']) {
+              core.info(`${key} = ${claims[key]}`);
+            }
+            core.endGroup();
+
+            core.startGroup('Paste-ready trust policy condition');
+            core.info(JSON.stringify({
+              StringEquals: {
+                'token.actions.githubusercontent.com:aud': claims.aud,
+                'token.actions.githubusercontent.com:sub': claims.sub,
+              },
+            }, null, 2));
+            core.info('');
+            core.info('If your policy uses a value ending in :* then the operator must be');
+            core.info('StringLike, not StringEquals - under StringEquals the * is a literal.');
+            core.endGroup();
+
+            if (!ok) core.setFailed('Secret checks failed - see the errors above.');
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
