@@ -1,4 +1,5 @@
 import { TERMINAL_CALL_STATUSES } from '@voiceops/shared';
+import { RotateCcw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -9,6 +10,7 @@ import {
   Card,
   CardTitle,
   ConfirmDialog,
+  linkButtonClass,
   EmptyState,
   ErrorState,
   Spinner,
@@ -79,7 +81,26 @@ export const CallDetailPage = () => {
               <Button variant="destructive" onClick={() => setConfirmingEnd(true)}>
                 End call
               </Button>
-            ) : null}
+            ) : (
+              // Reopens the form with this contact and template already chosen. It
+              // does not dial on its own: a call costs money and rings a real person,
+              // so the operator still presses Start call.
+              <Link
+                to={{
+                  pathname: '/calls/new',
+                  search: new URLSearchParams({
+                    ...(data.contactId
+                      ? { contactId: data.contactId }
+                      : { phone: data.phone }),
+                    ...(data.templateId ? { templateId: data.templateId } : {}),
+                  }).toString(),
+                }}
+                className={linkButtonClass()}
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Call again
+              </Link>
+            )}
           </div>
         }
       />

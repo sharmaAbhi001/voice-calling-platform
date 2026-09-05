@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
@@ -33,6 +33,13 @@ type FormValues = z.infer<typeof schema>;
 
 export const NewCallPage = () => {
   const navigate = useNavigate();
+  // "Call again" on a finished call links back here with the same contact and
+  // template, so the operator confirms the variables rather than redialling blind.
+  const [searchParams] = useSearchParams();
+  const presetContactId = searchParams.get('contactId') ?? '';
+  const presetPhone = searchParams.get('phone') ?? '';
+  const presetTemplateId = searchParams.get('templateId') ?? '';
+
   const [variables, setVariables] = React.useState<Record<string, string>>({});
 
   const templates = useQuery({ queryKey: ['templates'], queryFn: templatesApi.list });
@@ -49,12 +56,38 @@ export const NewCallPage = () => {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { mode: 'contact', contactId: '', templateId: '' },
+    defaultValues: {
+      // A call placed to a raw number has no contact to go back to, so it reopens
+      // in "phone" mode with that number filled in.
+      mode: presetPhone && !presetContactId ? 'phone' : 'contact',
+      contactId: presetContactId,
+      phone: presetPhone,
+      templateId: presetTemplateId,
+    },
   });
 
   const mode = watch('mode');
   const templateId = watch('templateId');
+  const contactId = watch('contactId');
   const selectedTemplate = templates.data?.data.find((template) => template.id === templateId);
+  const selectedContact = contacts.data?.data.find((contact) => contact.id === contactId);
+
+  /**
+   * The backend already fills first_name and full_name from the contact when they
+   * are left blank (calls.service.ts). Mirroring that here means the operator sees
+   * the name that will actually be spoken, instead of a required-looking field they
+   * think they must retype. Picking a different contact replaces these two values;
+   * every other variable is left exactly as typed.
+   */
+  const contactName = selectedContact?.name;
+  React.useEffect(() => {
+    if (!contactName) return;
+    setVariables((current) => ({
+      ...current,
+      first_name: contactName.split(' ')[0] ?? contactName,
+      full_name: contactName,
+    }));
+  }, [contactName]);
 
   const createCall = useMutation({
     mutationFn: (values: FormValues) =>
@@ -181,6 +214,7 @@ export const NewCallPage = () => {
                     <Input
                       id={`var-${variable.key}`}
                       value={variables[variable.key] ?? ''}
+                      placeholder={variable.example}
                       onChange={(event) =>
                         setVariables((current) => ({
                           ...current,
