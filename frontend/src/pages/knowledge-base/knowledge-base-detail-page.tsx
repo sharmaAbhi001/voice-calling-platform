@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
+  ApiErrorMessage,
   Alert,
   AlertDescription,
   Badge,
@@ -34,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui';
+import { formatApiError } from '@/lib/api-error';
 import { knowledgeApi } from '@/services/endpoints';
 
 const EMPTY_DOCUMENT = {
@@ -85,7 +87,7 @@ export const KnowledgeBaseDetailPage = () => {
       invalidate();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not delete the document.'),
+      toast.error(formatApiError(error, 'Could not delete the document.')),
   });
 
   const reindex = useMutation({
@@ -95,7 +97,7 @@ export const KnowledgeBaseDetailPage = () => {
       invalidate();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not start the reindex.'),
+      toast.error(formatApiError(error, 'Could not start the reindex.')),
   });
 
   // The retrieval preview runs the exact pipeline the agent's tool uses.
@@ -211,9 +213,10 @@ export const KnowledgeBaseDetailPage = () => {
             </div>
             {saveDocument.isError ? (
               <StatusMessage tone="error">
-                {saveDocument.error instanceof Error
-                  ? saveDocument.error.message
-                  : 'Could not save the document.'}
+                <ApiErrorMessage
+                  error={saveDocument.error}
+                  fallback="Could not save the document."
+                />
               </StatusMessage>
             ) : null}
             {saveDocument.isSuccess ? (

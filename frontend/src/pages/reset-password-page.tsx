@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
-import { Button, Card, Field, Input, StatusMessage } from '@/components/ui';
+import { ApiErrorMessage, Button, Card, Field, Input, StatusMessage } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { authApi } from '@/services/endpoints';
 
@@ -29,7 +29,7 @@ export const ResetPasswordPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
   const [done, setDone] = React.useState(false);
 
   const {
@@ -48,7 +48,7 @@ export const ResetPasswordPage = () => {
       // Give the confirmation a beat to be read before the login screen replaces it.
       setTimeout(() => navigate('/login', { replace: true }), 2000);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not reset your password');
+      setError(caught);
     }
   });
 
@@ -115,7 +115,11 @@ export const ResetPasswordPage = () => {
                 Update password
               </Button>
 
-              {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
+              {error ? (
+                <StatusMessage tone="error">
+                  <ApiErrorMessage error={error} fallback="Could not reset your password" />
+                </StatusMessage>
+              ) : null}
             </form>
           </>
         )}

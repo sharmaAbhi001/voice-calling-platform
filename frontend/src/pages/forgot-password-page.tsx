@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate } from 'react-router-dom';
 import { z } from 'zod';
-import { Button, Card, Field, Input, StatusMessage } from '@/components/ui';
+import { ApiErrorMessage, Button, Card, Field, Input, StatusMessage } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { authApi } from '@/services/endpoints';
 
@@ -16,7 +16,7 @@ type FormValues = z.infer<typeof schema>;
 export const ForgotPasswordPage = () => {
   const { user } = useAuth();
   const [sent, setSent] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   const {
     register,
@@ -33,7 +33,7 @@ export const ForgotPasswordPage = () => {
       // The API answers the same way for unknown addresses, and so does this screen.
       setSent(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not send the reset link');
+      setError(caught);
     }
   });
 
@@ -74,7 +74,11 @@ export const ForgotPasswordPage = () => {
               Send reset link
             </Button>
 
-            {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
+            {error ? (
+              <StatusMessage tone="error">
+                <ApiErrorMessage error={error} fallback="Could not send the reset link" />
+              </StatusMessage>
+            ) : null}
 
             <p className="mt-4 text-sm text-muted-foreground">
               <Link to="/login" className="font-medium underline underline-offset-4">

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { PageHeader } from '@/components/layout/app-shell';
 import { EligibilityBadge } from '@/components/shared/status-badges';
 import {
+  ApiErrorMessage,
   Button,
   Card,
   CardTitle,
@@ -24,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui';
+import { formatApiError } from '@/lib/api-error';
 import { contactsApi } from '@/services/endpoints';
 
 const CSV_PLACEHOLDER = `name,phone,company,email,tags,eligibilityStatus
@@ -71,7 +73,7 @@ export const ContactsPage = () => {
       void invalidate();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not update consent.'),
+      toast.error(formatApiError(error, 'Could not update consent.')),
   });
 
   return (
@@ -120,9 +122,10 @@ export const ContactsPage = () => {
             </Button>
             {createContact.isError ? (
               <StatusMessage tone="error">
-                {createContact.error instanceof Error
-                  ? createContact.error.message
-                  : 'Could not add the contact.'}
+                <ApiErrorMessage
+                  error={createContact.error}
+                  fallback="Could not add the contact."
+                />
               </StatusMessage>
             ) : null}
             {createContact.isSuccess ? (

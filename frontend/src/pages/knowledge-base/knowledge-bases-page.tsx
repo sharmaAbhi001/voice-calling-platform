@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
+  ApiErrorMessage,
   Button,
   Card,
   CardTitle,
@@ -73,7 +74,7 @@ export const KnowledgeBasesPage = () => {
           </Button>
           {create.isError ? (
             <StatusMessage tone="error">
-              {create.error instanceof Error ? create.error.message : 'Could not create.'}
+              <ApiErrorMessage error={create.error} fallback="Could not create the knowledge base." />
             </StatusMessage>
           ) : null}
         </form>

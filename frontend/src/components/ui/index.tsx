@@ -30,6 +30,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { buttonVariants } from '@/components/ui/button';
+import { readApiError } from '@/lib/api-error';
 import { cn } from '@/lib/utils';
 
 /**
@@ -278,12 +279,58 @@ export const EmptyState = ({
   </div>
 );
 
-export const ErrorState = ({ error, onRetry }: { error: unknown; onRetry?: () => void }) => (
+/**
+ * Renders an API failure the way the API described it: the headline sentence, and
+ * below it every field the server rejected with the reason for each. Without the
+ * list a validation failure reads as "Request validation failed" and the user has
+ * no idea which input to fix.
+ */
+export const ApiErrorMessage = ({
+  error,
+  fallback,
+  className,
+}: {
+  error: unknown;
+  fallback: string;
+  className?: string;
+}) => {
+  const { message, issues } = readApiError(error, fallback);
+  return (
+    <div className={className}>
+      <p>{message}</p>
+      {issues.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {issues.map((issue, index) => (
+            <li key={`${issue.path}-${index}`} className="flex gap-1.5">
+              <span aria-hidden="true">•</span>
+              <span>
+                {issue.label ? <span className="font-medium">{issue.label}: </span> : null}
+                {issue.message}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+};
+
+export const ErrorState = ({
+  error,
+  onRetry,
+  fallback = 'Please try again.',
+}: {
+  error: unknown;
+  onRetry?: () => void;
+  fallback?: string;
+}) => (
   <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
     <p className="text-sm font-semibold text-destructive">Something went wrong</p>
-    <p className="mt-1 text-sm text-muted-foreground">
-      {error instanceof Error ? error.message : 'Please try again.'}
-    </p>
+    <ApiErrorMessage
+      error={error}
+      fallback={fallback}
+      className="mt-1 text-sm text-muted-foreground"
+    />
     {onRetry ? (
       <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
         Try again
@@ -300,7 +347,7 @@ export const StatusMessage = ({
   tone: 'success' | 'error';
   children: React.ReactNode;
 }) => (
-  <p
+  <div
     role="status"
     aria-live="polite"
     className={cn(
@@ -309,7 +356,7 @@ export const StatusMessage = ({
     )}
   >
     {children}
-  </p>
+  </div>
 );
 
 /**

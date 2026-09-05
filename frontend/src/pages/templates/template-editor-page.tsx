@@ -19,6 +19,7 @@ import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
+  ApiErrorMessage,
   Button,
   Card,
   CardTitle,
@@ -450,7 +451,7 @@ export const TemplateEditorPage = () => {
           </Button>
           {save.isError ? (
             <StatusMessage tone="error">
-              {save.error instanceof Error ? save.error.message : 'The template could not be saved.'}
+              <ApiErrorMessage error={save.error} fallback="The template could not be saved." />
             </StatusMessage>
           ) : null}
           {save.isSuccess ? <StatusMessage tone="success">Template saved.</StatusMessage> : null}

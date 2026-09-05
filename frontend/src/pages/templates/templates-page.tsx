@@ -24,6 +24,7 @@ import {
   TableRow,
   linkButtonClass,
 } from '@/components/ui';
+import { formatApiError } from '@/lib/api-error';
 import { formatDateTime } from '@/lib/utils';
 import { knowledgeApi, templatesApi } from '@/services/endpoints';
 
@@ -43,7 +44,7 @@ export const TemplatesPage = () => {
       void invalidate();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not duplicate the template.'),
+      toast.error(formatApiError(error, 'Could not duplicate the template.')),
   });
 
   const remove = useMutation({
@@ -54,7 +55,7 @@ export const TemplatesPage = () => {
       void invalidate();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not delete the template.'),
+      toast.error(formatApiError(error, 'Could not delete the template.')),
   });
 
   const baseName = (id: string | null) =>

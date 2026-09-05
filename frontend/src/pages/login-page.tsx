@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate } from 'react-router-dom';
 import { z } from 'zod';
-import { Button, Card, Field, Input, StatusMessage } from '@/components/ui';
+import { ApiErrorMessage, Button, Card, Field, Input, StatusMessage } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
 
 const schema = z.object({
@@ -15,7 +15,7 @@ type FormValues = z.infer<typeof schema>;
 
 export const LoginPage = () => {
   const { user, login } = useAuth();
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   const {
     register,
@@ -30,7 +30,7 @@ export const LoginPage = () => {
     try {
       await login(values.email, values.password);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Sign in failed');
+      setError(caught);
     }
   });
 
@@ -69,7 +69,11 @@ export const LoginPage = () => {
             Sign in
           </Button>
 
-          {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
+          {error ? (
+            <StatusMessage tone="error">
+              <ApiErrorMessage error={error} fallback="Sign in failed" />
+            </StatusMessage>
+          ) : null}
 
           <p className="mt-4 text-sm text-muted-foreground">
             <Link to="/forgot-password" className="font-medium underline underline-offset-4">

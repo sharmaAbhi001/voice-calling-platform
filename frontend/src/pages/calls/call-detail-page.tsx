@@ -17,6 +17,7 @@ import {
   StatusMessage,
   toast,
 } from '@/components/ui';
+import { formatApiError } from '@/lib/api-error';
 import { formatDateTime, formatDuration } from '@/lib/utils';
 import { callsApi } from '@/services/endpoints';
 
@@ -49,7 +50,7 @@ export const CallDetailPage = () => {
       toast.success('The call was ended.');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not end the call.'),
+      toast.error(formatApiError(error, 'Could not end the call.')),
   });
 
   const loadRecording = useMutation({

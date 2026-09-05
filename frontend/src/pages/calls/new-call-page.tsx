@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
+  ApiErrorMessage,
   Button,
   Card,
   Combobox,
@@ -234,9 +235,7 @@ export const NewCallPage = () => {
 
           {createCall.isError ? (
             <StatusMessage tone="error">
-              {createCall.error instanceof Error
-                ? createCall.error.message
-                : 'The call could not be placed.'}
+              <ApiErrorMessage error={createCall.error} fallback="The call could not be placed." />
             </StatusMessage>
           ) : null}
         </form>
