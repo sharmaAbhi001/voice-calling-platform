@@ -36,6 +36,9 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/src:/app/backend/src
+      # Mounted so `prisma migrate dev` inside the container writes the migration
+      # back into the repository instead of into the image's layer.
+      - ./backend/prisma:/app/backend/prisma
       - ./shared:/app/shared
     command: npm run dev -w backend
 

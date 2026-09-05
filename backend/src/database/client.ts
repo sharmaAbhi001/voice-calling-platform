@@ -1,40 +1,48 @@
-import pg from 'pg';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
-// node-pg returns numeric/int8 as strings; the counts we run are small enough for Number.
-pg.types.setTypeParser(pg.types.builtins.INT8, (value) => Number.parseInt(value, 10));
-pg.types.setTypeParser(pg.types.builtins.NUMERIC, (value) => Number.parseFloat(value));
-
-export const pool = new pg.Pool({
-  connectionString: env.DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-});
-
-pool.on('error', (error) => logger.error({ err: error }, 'Unexpected postgres pool error'));
-
-export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
-  text: string,
-  params: unknown[] = [],
-): Promise<pg.QueryResult<T>> => pool.query<T>(text, params as never[]);
-
-/** Runs a unit of work inside a transaction, rolling back on any throw. */
-export const withTransaction = async <T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> => {
-  const client = await pool.connect();
+/**
+ * Prisma opens its own pool inside the query engine, sized by a connection-string
+ * parameter rather than by code. The previous pg pool used 10 connections and a
+ * 30s idle timeout; keep that unless the operator has already tuned the URL.
+ */
+const connectionUrl = (): string => {
   try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+    const url = new URL(env.DATABASE_URL);
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '10');
+    }
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', '30');
+    }
+    return url.toString();
+  } catch {
+    // Not a parseable URL (e.g. a libpq key=value DSN). Prisma will do its own
+    // validation and produce a better message than we could here.
+    return env.DATABASE_URL;
   }
 };
 
-export const closePool = async (): Promise<void> => {
-  await pool.end();
+export const prisma = new PrismaClient({
+  datasources: { db: { url: connectionUrl() } },
+  log: [
+    { level: 'warn', emit: 'event' },
+    { level: 'error', emit: 'event' },
+  ],
+});
+
+prisma.$on('warn', (event) => logger.warn({ target: event.target }, event.message));
+prisma.$on('error', (event) => logger.error({ target: event.target }, event.message));
+
+/**
+ * Runs a unit of work inside a transaction, rolling back on any throw. The
+ * callback receives a transactional client with the same API as `prisma`.
+ */
+export const withTransaction = <T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => prisma.$transaction(fn);
+
+export const disconnectDatabase = async (): Promise<void> => {
+  await prisma.$disconnect();
 };

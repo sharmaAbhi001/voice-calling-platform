@@ -1,13 +1,13 @@
 import { createApp } from './app.js';
 import { capabilities, env } from './config/env.js';
-import { closePool, pool } from './database/client.js';
+import { disconnectDatabase, prisma } from './database/client.js';
 import { callsService } from './modules/calls/calls.service.js';
 import { logger } from './utils/logger.js';
 
 const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
 
 const start = async (): Promise<void> => {
-  await pool.query('SELECT 1');
+  await prisma.$queryRaw`SELECT 1`;
   logger.info('Database connection established');
 
   const app = createApp();
@@ -32,7 +32,7 @@ const start = async (): Promise<void> => {
     logger.info({ signal }, 'Shutting down');
     clearInterval(reconcile);
     server.close(() => {
-      closePool()
+      disconnectDatabase()
         .catch(() => undefined)
         .finally(() => process.exit(0));
     });

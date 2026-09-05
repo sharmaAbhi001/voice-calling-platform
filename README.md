@@ -27,7 +27,7 @@ npm install                 # also builds the shared package
 
 cp .env.example .env        # then fill it in - see docs/SETUP-ACCOUNTS.md
 npm run db:up               # Postgres + pgvector in Docker
-npm run migrate
+npm run migrate             # Prisma migrations
 npm run seed                # admin user, demo knowledge base, demo template
 
 npm run dev                 # backend :4000, agent worker, frontend :5173
@@ -67,7 +67,7 @@ run as separate processes and share nothing but types.
 
 ```text
 frontend/   React + Vite + TypeScript + Tailwind, shadcn/ui-style components
-backend/    Node.js + Express + TypeScript, layered domain modules
+backend/    Node.js + Express + TypeScript + Prisma, layered domain modules
 agent/      LiveKit voice agent (separate process from the backend)
 shared/     TypeScript types and constants used by all three
 docker/     nginx config for the production frontend image
@@ -83,7 +83,7 @@ backend/src/modules/<module>/
   <module>.routes.ts       HTTP surface, middleware wiring
   <module>.controller.ts   request in, response out - no business logic
   <module>.service.ts      use cases and business rules
-  <module>.repository.ts   SQL; nothing above this layer knows Postgres exists
+  <module>.repository.ts   Prisma; nothing above this layer knows Postgres exists
   <module>.validation.ts   zod schemas; controllers only ever read req.validated
 ```
 
@@ -311,7 +311,7 @@ npm run dev:frontend   # frontend only
 npm run agent:docker       # agent in Docker - Windows hosts without the VC++ runtime
 npm run agent:docker:down
 
-npm run migrate        # apply SQL migrations
+npm run migrate        # apply Prisma migrations
 npm run seed           # admin user + demo knowledge base + demo template
 npm run typecheck      # all workspaces
 npm run build          # all workspaces

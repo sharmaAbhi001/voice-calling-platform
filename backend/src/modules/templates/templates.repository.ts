@@ -6,49 +6,27 @@ import type {
   TemplateVariable,
   VoiceProvider,
 } from '@voiceops/shared';
-import { query } from '../../database/client.js';
-
-interface TemplateRow {
-  id: string;
-  name: string;
-  objective: string;
-  opening_script: string;
-  system_prompt: string;
-  closing_script: string;
-  tone: string;
-  language: AgentLanguage;
-  voice_provider: VoiceProvider;
-  llm_provider: LlmProvider;
-  voice_name: string | null;
-  background_audio: BackgroundAudio;
-  qualification_questions: string[];
-  variable_schema: TemplateVariable[];
-  knowledge_base_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-const COLUMNS = `id, name, objective, opening_script, system_prompt, closing_script, tone, language, voice_provider, llm_provider, voice_name, background_audio,
-  qualification_questions, variable_schema, knowledge_base_id, created_at, updated_at`;
+import { Prisma, type Template as TemplateRow } from '@prisma/client';
+import { prisma } from '../../database/client.js';
 
 const toTemplate = (row: TemplateRow): Template => ({
   id: row.id,
   name: row.name,
   objective: row.objective,
-  openingScript: row.opening_script,
-  systemPrompt: row.system_prompt,
-  closingScript: row.closing_script,
+  openingScript: row.openingScript,
+  systemPrompt: row.systemPrompt,
+  closingScript: row.closingScript,
   tone: row.tone,
-  language: row.language,
-  voiceProvider: row.voice_provider,
-  llmProvider: row.llm_provider,
-  voiceName: row.voice_name,
-  backgroundAudio: row.background_audio,
-  qualificationQuestions: row.qualification_questions,
-  variableSchema: row.variable_schema,
-  knowledgeBaseId: row.knowledge_base_id,
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString(),
+  language: row.language as AgentLanguage,
+  voiceProvider: row.voiceProvider as VoiceProvider,
+  llmProvider: row.llmProvider as LlmProvider,
+  voiceName: row.voiceName,
+  backgroundAudio: row.backgroundAudio as BackgroundAudio,
+  qualificationQuestions: row.qualificationQuestions,
+  variableSchema: row.variableSchema as unknown as TemplateVariable[],
+  knowledgeBaseId: row.knowledgeBaseId,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
 });
 
 export interface TemplateWrite {
@@ -70,93 +48,57 @@ export interface TemplateWrite {
 
 export const templatesRepository = {
   async list(): Promise<Template[]> {
-    const { rows } = await query<TemplateRow>(
-      `SELECT ${COLUMNS} FROM templates ORDER BY created_at DESC`,
-    );
+    const rows = await prisma.template.findMany({ orderBy: { createdAt: 'desc' } });
     return rows.map(toTemplate);
   },
 
   async findById(id: string): Promise<Template | null> {
-    const { rows } = await query<TemplateRow>(`SELECT ${COLUMNS} FROM templates WHERE id = $1`, [
-      id,
-    ]);
-    return rows[0] ? toTemplate(rows[0]) : null;
+    const row = await prisma.template.findUnique({ where: { id } });
+    return row ? toTemplate(row) : null;
   },
 
   async create(input: TemplateWrite): Promise<Template> {
-    const { rows } = await query<TemplateRow>(
-      `INSERT INTO templates
-         (name, objective, opening_script, system_prompt, closing_script, tone, language, voice_provider,
-          llm_provider, voice_name, background_audio,
-          qualification_questions, variable_schema, knowledge_base_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)
-       RETURNING ${COLUMNS}`,
-      [
-        input.name,
-        input.objective,
-        input.openingScript,
-        input.systemPrompt,
-        input.closingScript,
-        input.tone,
-        input.language,
-        input.voiceProvider,
-        input.llmProvider,
-        input.voiceName,
-        input.backgroundAudio,
-        input.qualificationQuestions,
-        JSON.stringify(input.variableSchema),
-        input.knowledgeBaseId,
-      ],
-    );
-    return toTemplate(rows[0] as TemplateRow);
+    const row = await prisma.template.create({
+      data: {
+        ...input,
+        variableSchema: input.variableSchema as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return toTemplate(row);
   },
 
   async update(id: string, input: Partial<TemplateWrite>): Promise<Template | null> {
-    const { rows } = await query<TemplateRow>(
-      `UPDATE templates SET
-         name = COALESCE($2, name),
-         objective = COALESCE($3, objective),
-         opening_script = COALESCE($4, opening_script),
-         system_prompt = COALESCE($5, system_prompt),
-         closing_script = COALESCE($6, closing_script),
-         tone = COALESCE($7, tone),
-         language = COALESCE($8, language),
-         voice_provider = COALESCE($9, voice_provider),
-         llm_provider = COALESCE($10, llm_provider),
-         voice_name = CASE WHEN $11::boolean THEN $12 ELSE voice_name END,
-         background_audio = COALESCE($13, background_audio),
-         qualification_questions = COALESCE($14, qualification_questions),
-         variable_schema = COALESCE($15::jsonb, variable_schema),
-         knowledge_base_id = CASE WHEN $16::boolean THEN $17::uuid ELSE knowledge_base_id END
-       WHERE id = $1
-       RETURNING ${COLUMNS}`,
-      [
-        id,
-        input.name ?? null,
-        input.objective ?? null,
-        input.openingScript ?? null,
-        input.systemPrompt ?? null,
-        input.closingScript ?? null,
-        input.tone ?? null,
-        input.language ?? null,
-        input.voiceProvider ?? null,
-        input.llmProvider ?? null,
-        // voiceName is nullable, so "clear it" and "leave it alone" need a flag.
-        input.voiceName !== undefined,
-        input.voiceName ?? null,
-        input.backgroundAudio ?? null,
-        input.qualificationQuestions ?? null,
-        input.variableSchema ? JSON.stringify(input.variableSchema) : null,
-        // knowledgeBaseId is nullable, so "clear it" and "leave it alone" need a flag.
-        input.knowledgeBaseId !== undefined,
-        input.knowledgeBaseId ?? null,
-      ],
-    );
-    return rows[0] ? toTemplate(rows[0]) : null;
+    // Unchecked so knowledge_base_id can be written as a plain nullable column
+    // instead of a connect/disconnect, which updateMany cannot express.
+    const data: Prisma.TemplateUncheckedUpdateManyInput = {};
+    if (input.name !== undefined) data.name = input.name;
+    if (input.objective !== undefined) data.objective = input.objective;
+    if (input.openingScript !== undefined) data.openingScript = input.openingScript;
+    if (input.systemPrompt !== undefined) data.systemPrompt = input.systemPrompt;
+    if (input.closingScript !== undefined) data.closingScript = input.closingScript;
+    if (input.tone !== undefined) data.tone = input.tone;
+    if (input.language !== undefined) data.language = input.language;
+    if (input.voiceProvider !== undefined) data.voiceProvider = input.voiceProvider;
+    if (input.llmProvider !== undefined) data.llmProvider = input.llmProvider;
+    // voiceName and knowledgeBaseId are nullable: an explicit null clears them,
+    // undefined leaves them alone. `in input` is what tells the two apart.
+    if (input.voiceName !== undefined) data.voiceName = input.voiceName;
+    if (input.backgroundAudio !== undefined) data.backgroundAudio = input.backgroundAudio;
+    if (input.qualificationQuestions !== undefined) {
+      data.qualificationQuestions = input.qualificationQuestions;
+    }
+    if (input.variableSchema !== undefined) {
+      data.variableSchema = input.variableSchema as unknown as Prisma.InputJsonValue;
+    }
+    if (input.knowledgeBaseId !== undefined) data.knowledgeBaseId = input.knowledgeBaseId;
+
+    // updateMany rather than update so a missing row is null, not a thrown P2025.
+    const { count } = await prisma.template.updateMany({ where: { id }, data });
+    return count > 0 ? this.findById(id) : null;
   },
 
   async remove(id: string): Promise<boolean> {
-    const { rowCount } = await query('DELETE FROM templates WHERE id = $1', [id]);
-    return (rowCount ?? 0) > 0;
+    const { count } = await prisma.template.deleteMany({ where: { id } });
+    return count > 0;
   },
 };

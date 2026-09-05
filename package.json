@@ -18,6 +18,7 @@
     "build": "npm run build -w shared && npm run build -w backend && npm run build -w agent && npm run build -w frontend",
     "migrate": "npm run migrate -w backend",
     "seed": "npm run seed -w backend",
+    "db:generate": "npm run db:generate -w backend",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w agent && npm run typecheck -w frontend",
     "db:up": "docker compose -f docker-compose.dev.yml up -d postgres",
     "db:down": "docker compose -f docker-compose.dev.yml down",

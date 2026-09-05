@@ -1,3 +1,15 @@
+-- Baseline migration.
+--
+-- This is the concatenation of the six hand-written SQL migrations this project
+-- used before Prisma (001_init .. 006_password_reset_tokens), unchanged. A fresh
+-- database gets the identical schema; an existing database is told this migration
+-- is already applied (see backend/src/database/migrate.ts, which baselines
+-- automatically when it finds the old schema_migrations ledger).
+
+-- ----------------------------------------------------------------------------
+-- 001_init.sql
+-- ----------------------------------------------------------------------------
+
 -- Core schema for the MVP: users, contacts, knowledge base, templates, calls.
 -- Campaigns are intentionally out of scope for this phase.
 
@@ -159,3 +171,69 @@ BEGIN
       t, t);
   END LOOP;
 END $migrate$;
+
+-- ----------------------------------------------------------------------------
+-- 002_template_language.sql
+-- ----------------------------------------------------------------------------
+
+-- Language a template's calls are conducted in. Existing templates keep English.
+ALTER TABLE templates
+  ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'EN'
+  CHECK (language IN ('EN', 'HI', 'HINGLISH'));
+
+-- ----------------------------------------------------------------------------
+-- 003_template_voice_provider.sql
+-- ----------------------------------------------------------------------------
+
+-- Which voice vendor a template's calls use. Existing templates keep OpenAI.
+ALTER TABLE templates
+  ADD COLUMN IF NOT EXISTS voice_provider TEXT NOT NULL DEFAULT 'OPENAI'
+  CHECK (voice_provider IN ('OPENAI', 'SARVAM'));
+
+-- ----------------------------------------------------------------------------
+-- 004_template_llm_voice_ambience.sql
+-- ----------------------------------------------------------------------------
+
+-- Per-template plugin selection: which model runs the conversation, which voice
+-- speaks it, and what the customer hears behind it.
+ALTER TABLE templates
+  ADD COLUMN IF NOT EXISTS llm_provider TEXT NOT NULL DEFAULT 'OPENAI'
+  CHECK (llm_provider IN ('OPENAI', 'SARVAM'));
+
+-- NULL means "use the provider's default voice", so changing the default in
+-- configuration does not silently rewrite every template.
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS voice_name TEXT;
+
+ALTER TABLE templates
+  ADD COLUMN IF NOT EXISTS background_audio TEXT NOT NULL DEFAULT 'NONE'
+  CHECK (background_audio IN ('NONE', 'OFFICE'));
+
+-- ----------------------------------------------------------------------------
+-- 005_deepgram_voice_provider.sql
+-- ----------------------------------------------------------------------------
+
+-- Deepgram becomes a selectable speech provider alongside OpenAI and Sarvam.
+ALTER TABLE templates DROP CONSTRAINT IF EXISTS templates_voice_provider_check;
+ALTER TABLE templates
+  ADD CONSTRAINT templates_voice_provider_check
+  CHECK (voice_provider IN ('OPENAI', 'DEEPGRAM', 'SARVAM'));
+
+-- ----------------------------------------------------------------------------
+-- 006_password_reset_tokens.sql
+-- ----------------------------------------------------------------------------
+
+-- Forgot-password flow. Only the SHA-256 hash of the token is stored, so a leaked
+-- database row cannot be replayed as a reset link.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Lookup path for "invalidate every outstanding token for this user".
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx
+  ON password_reset_tokens (user_id) WHERE used_at IS NULL;
+

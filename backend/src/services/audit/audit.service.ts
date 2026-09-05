@@ -1,4 +1,5 @@
-import { query } from '../../database/client.js';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../../database/client.js';
 import { logger } from '../../utils/logger.js';
 
 export interface AuditEntry {
@@ -16,17 +17,15 @@ export interface AuditEntry {
 export const auditService = {
   async record(entry: AuditEntry): Promise<void> {
     try {
-      await query(
-        `INSERT INTO audit_logs (actor_id, actor_type, action, subject, metadata)
-         VALUES ($1, $2, $3, $4, $5::jsonb)`,
-        [
-          entry.actorId ?? null,
-          entry.actorType ?? 'USER',
-          entry.action,
-          entry.subject ?? null,
-          JSON.stringify(entry.metadata ?? {}),
-        ],
-      );
+      await prisma.auditLog.create({
+        data: {
+          actorId: entry.actorId ?? null,
+          actorType: entry.actorType ?? 'USER',
+          action: entry.action,
+          subject: entry.subject ?? null,
+          metadata: (entry.metadata ?? {}) as Prisma.InputJsonValue,
+        },
+      });
     } catch (error) {
       // Auditing must never break the operation it is describing.
       logger.error({ err: error, action: entry.action }, 'Failed to write audit log');

@@ -1,4 +1,4 @@
-import { closePool, query } from './client.js';
+import { disconnectDatabase, prisma } from './client.js';
 import { logger } from '../utils/logger.js';
 import { authService } from '../modules/auth/auth.service.js';
 import { authRepository } from '../modules/auth/auth.repository.js';
@@ -210,20 +210,26 @@ const run = async (): Promise<void> => {
   }
 
   // A safe destination to test with: eligible, but you must set the real number.
-  await query(
-    `INSERT INTO contacts (name, phone, company, eligibility_status, tags)
-     VALUES ('Test Contact', '+919999999999', 'Test Co', 'PENDING', ARRAY['demo'])
-     ON CONFLICT (phone) DO NOTHING`,
-  );
+  await prisma.contact.upsert({
+    where: { phone: '+919999999999' },
+    create: {
+      name: 'Test Contact',
+      phone: '+919999999999',
+      company: 'Test Co',
+      eligibilityStatus: 'PENDING',
+      tags: ['demo'],
+    },
+    update: {},
+  });
 
   logger.info('Seed complete');
 };
 
 run()
-  .then(() => closePool())
+  .then(() => disconnectDatabase())
   .then(() => process.exit(0))
   .catch(async (error) => {
     logger.error({ err: error }, 'Seed failed');
-    await closePool().catch(() => undefined);
+    await disconnectDatabase().catch(() => undefined);
     process.exit(1);
   });

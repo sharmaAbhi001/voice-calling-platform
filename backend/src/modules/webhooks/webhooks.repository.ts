@@ -1,4 +1,5 @@
-import { query } from '../../database/client.js';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../database/client.js';
 
 export const webhooksRepository = {
   /**
@@ -12,12 +13,22 @@ export const webhooksRepository = {
     eventType: string | null;
     payload: unknown;
   }): Promise<boolean> {
-    const { rowCount } = await query(
-      `INSERT INTO webhook_events (provider, event_key, event_type, payload)
-       VALUES ($1, $2, $3, $4::jsonb)
-       ON CONFLICT (provider, event_key) DO NOTHING`,
-      [input.provider, input.eventKey, input.eventType, JSON.stringify(input.payload)],
-    );
-    return (rowCount ?? 0) > 0;
+    try {
+      await prisma.webhookEvent.create({
+        data: {
+          provider: input.provider,
+          eventKey: input.eventKey,
+          eventType: input.eventType,
+          payload: (input.payload ?? {}) as Prisma.InputJsonValue,
+        },
+      });
+      return true;
+    } catch (error) {
+      // P2002 is the unique violation on (provider, event_key): a replay.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return false;
+      }
+      throw error;
+    }
   },
 };

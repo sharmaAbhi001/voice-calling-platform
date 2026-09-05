@@ -44,7 +44,9 @@ if [ "${health:-}" != "healthy" ]; then
   exit 1
 fi
 
-# Forward-only SQL migrations, applied before the new code serves traffic.
+# Forward-only Prisma migrations, applied before the new code serves traffic.
+# The entry point wraps `prisma migrate deploy`, and baselines a database that
+# predates Prisma on its first run - see backend/prisma/README.md.
 # --no-deps because Postgres is already up and the backend image would otherwise
 # drag the whole dependency chain into this one-shot container.
 echo "==> Applying migrations"

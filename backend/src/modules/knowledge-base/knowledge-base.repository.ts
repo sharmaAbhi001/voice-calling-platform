@@ -5,31 +5,23 @@ import type {
   KnowledgeBase,
   KnowledgeDocument,
 } from '@voiceops/shared';
-import type { PoolClient } from 'pg';
-import { query, withTransaction } from '../../database/client.js';
+import { Prisma } from '@prisma/client';
+import { prisma, withTransaction } from '../../database/client.js';
 import { toVectorLiteral } from '../../services/ai/embedding.service.js';
 
-interface KbRow {
-  id: string;
-  name: string;
-  description: string | null;
-  document_count?: number;
-  created_at: Date;
-  updated_at: Date;
-}
+type KbRow = { id: string; name: string; description: string | null; createdAt: Date; updatedAt: Date };
 
-interface DocumentRow {
+type DocumentRow = {
   id: string;
-  knowledge_base_id: string;
+  knowledgeBaseId: string;
   title: string;
-  category: KbCategory;
+  category: string;
   content: string;
-  status: DocumentStatus;
+  status: string;
   version: number;
-  chunk_count?: number;
-  created_at: Date;
-  updated_at: Date;
-}
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 interface PassageRow {
   document_id: string;
@@ -39,30 +31,27 @@ interface PassageRow {
   similarity: number;
 }
 
-const toKnowledgeBase = (row: KbRow): KnowledgeBase => ({
+const toKnowledgeBase = (row: KbRow, documentCount?: number): KnowledgeBase => ({
   id: row.id,
   name: row.name,
   description: row.description,
-  documentCount: row.document_count,
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString(),
+  documentCount,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
 });
 
-const toDocument = (row: DocumentRow): KnowledgeDocument => ({
+const toDocument = (row: DocumentRow, chunkCount?: number): KnowledgeDocument => ({
   id: row.id,
-  knowledgeBaseId: row.knowledge_base_id,
+  knowledgeBaseId: row.knowledgeBaseId,
   title: row.title,
-  category: row.category,
+  category: row.category as KbCategory,
   content: row.content,
-  status: row.status,
+  status: row.status as DocumentStatus,
   version: row.version,
-  chunkCount: row.chunk_count,
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString(),
+  chunkCount,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
 });
-
-const DOC_COLUMNS =
-  'id, knowledge_base_id, title, category, content, status, version, created_at, updated_at';
 
 export interface SearchOptions {
   knowledgeBaseId: string;
@@ -76,90 +65,65 @@ export interface SearchOptions {
 
 export const knowledgeBaseRepository = {
   async listBases(): Promise<KnowledgeBase[]> {
-    const { rows } = await query<KbRow>(
-      `SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
-              count(d.id)::int AS document_count
-       FROM knowledge_bases kb
-       LEFT JOIN knowledge_documents d ON d.knowledge_base_id = kb.id AND d.status = 'PUBLISHED'
-       GROUP BY kb.id
-       ORDER BY kb.created_at DESC`,
-    );
-    return rows.map(toKnowledgeBase);
+    const rows = await prisma.knowledgeBase.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { documents: { where: { status: 'PUBLISHED' } } } } },
+    });
+    return rows.map((row) => toKnowledgeBase(row, row._count.documents));
   },
 
   async findBaseById(id: string): Promise<KnowledgeBase | null> {
-    const { rows } = await query<KbRow>(
-      `SELECT id, name, description, created_at, updated_at FROM knowledge_bases WHERE id = $1`,
-      [id],
-    );
-    return rows[0] ? toKnowledgeBase(rows[0]) : null;
+    const row = await prisma.knowledgeBase.findUnique({ where: { id } });
+    return row ? toKnowledgeBase(row) : null;
   },
 
   async createBase(input: { name: string; description: string | null }): Promise<KnowledgeBase> {
-    const { rows } = await query<KbRow>(
-      `INSERT INTO knowledge_bases (name, description) VALUES ($1, $2)
-       RETURNING id, name, description, created_at, updated_at`,
-      [input.name, input.description],
-    );
-    return toKnowledgeBase(rows[0] as KbRow);
+    return toKnowledgeBase(await prisma.knowledgeBase.create({ data: input }));
   },
 
   async updateBase(
     id: string,
     input: { name?: string; description?: string | null },
   ): Promise<KnowledgeBase | null> {
-    const { rows } = await query<KbRow>(
-      `UPDATE knowledge_bases
-       SET name = COALESCE($2, name), description = COALESCE($3, description)
-       WHERE id = $1
-       RETURNING id, name, description, created_at, updated_at`,
-      [id, input.name ?? null, input.description ?? null],
-    );
-    return rows[0] ? toKnowledgeBase(rows[0]) : null;
+    const data: Prisma.KnowledgeBaseUncheckedUpdateManyInput = {};
+    if (input.name != null) data.name = input.name;
+    if (input.description != null) data.description = input.description;
+
+    const { count } = await prisma.knowledgeBase.updateMany({ where: { id }, data });
+    if (count === 0) return null;
+    return this.findBaseById(id);
   },
 
   async listDocuments(
     knowledgeBaseId: string,
     filters: { search?: string; category?: KbCategory; status?: DocumentStatus },
   ): Promise<KnowledgeDocument[]> {
-    const params: unknown[] = [knowledgeBaseId];
-    const conditions = ['d.knowledge_base_id = $1'];
-
+    const where: Prisma.KnowledgeDocumentWhereInput = { knowledgeBaseId };
     if (filters.search) {
-      params.push(`%${filters.search.toLowerCase()}%`);
-      conditions.push(`(lower(d.title) LIKE $${params.length} OR lower(d.content) LIKE $${params.length})`);
+      where.OR = [
+        { title: { contains: filters.search, mode: 'insensitive' } },
+        { content: { contains: filters.search, mode: 'insensitive' } },
+      ];
     }
-    if (filters.category) {
-      params.push(filters.category);
-      conditions.push(`d.category = $${params.length}`);
-    }
-    if (filters.status) {
-      params.push(filters.status);
-      conditions.push(`d.status = $${params.length}`);
-    }
+    if (filters.category) where.category = filters.category;
+    if (filters.status) where.status = filters.status;
 
-    const { rows } = await query<DocumentRow>(
-      `SELECT d.id, d.knowledge_base_id, d.title, d.category, d.content, d.status, d.version,
-              d.created_at, d.updated_at, count(c.id)::int AS chunk_count
-       FROM knowledge_documents d
-       LEFT JOIN knowledge_chunks c ON c.document_id = d.id
-       WHERE ${conditions.join(' AND ')}
-       GROUP BY d.id
-       ORDER BY d.updated_at DESC`,
-      params,
-    );
-    return rows.map(toDocument);
+    const rows = await prisma.knowledgeDocument.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: { _count: { select: { chunks: true } } },
+    });
+    return rows.map((row) => toDocument(row, row._count.chunks));
   },
 
   async findDocument(
     knowledgeBaseId: string,
     documentId: string,
   ): Promise<KnowledgeDocument | null> {
-    const { rows } = await query<DocumentRow>(
-      `SELECT ${DOC_COLUMNS} FROM knowledge_documents WHERE id = $1 AND knowledge_base_id = $2`,
-      [documentId, knowledgeBaseId],
-    );
-    return rows[0] ? toDocument(rows[0]) : null;
+    const row = await prisma.knowledgeDocument.findFirst({
+      where: { id: documentId, knowledgeBaseId },
+    });
+    return row ? toDocument(row) : null;
   },
 
   /**
@@ -174,15 +138,17 @@ export const knowledgeBaseRepository = {
     status: DocumentStatus;
     chunks: Array<{ content: string; embedding: number[] | null }>;
   }): Promise<KnowledgeDocument> {
-    return withTransaction(async (client) => {
-      const { rows } = await client.query<DocumentRow>(
-        `INSERT INTO knowledge_documents (knowledge_base_id, title, category, content, status)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING ${DOC_COLUMNS}`,
-        [input.knowledgeBaseId, input.title, input.category, input.content, input.status],
-      );
-      const document = rows[0] as DocumentRow;
-      await insertChunks(client, {
+    return withTransaction(async (tx) => {
+      const document = await tx.knowledgeDocument.create({
+        data: {
+          knowledgeBaseId: input.knowledgeBaseId,
+          title: input.title,
+          category: input.category,
+          content: input.content,
+          status: input.status,
+        },
+      });
+      await insertChunks(tx, {
         documentId: document.id,
         knowledgeBaseId: input.knowledgeBaseId,
         category: input.category,
@@ -202,41 +168,36 @@ export const knowledgeBaseRepository = {
     /** null means "content unchanged, keep the existing chunks". */
     chunks: Array<{ content: string; embedding: number[] | null }> | null;
   }): Promise<KnowledgeDocument | null> {
-    return withTransaction(async (client) => {
-      const { rows } = await client.query<DocumentRow>(
-        `UPDATE knowledge_documents
-         SET title = COALESCE($3, title),
-             category = COALESCE($4, category),
-             content = COALESCE($5, content),
-             status = COALESCE($6, status),
-             version = version + 1
-         WHERE id = $1 AND knowledge_base_id = $2
-         RETURNING ${DOC_COLUMNS}`,
-        [
-          input.documentId,
-          input.knowledgeBaseId,
-          input.title ?? null,
-          input.category ?? null,
-          input.content ?? null,
-          input.status ?? null,
-        ],
-      );
-      const document = rows[0];
-      if (!document) return null;
+    return withTransaction(async (tx) => {
+      const data: Prisma.KnowledgeDocumentUncheckedUpdateManyInput = { version: { increment: 1 } };
+      if (input.title != null) data.title = input.title;
+      if (input.category != null) data.category = input.category;
+      if (input.content != null) data.content = input.content;
+      if (input.status != null) data.status = input.status;
+
+      const { count } = await tx.knowledgeDocument.updateMany({
+        where: { id: input.documentId, knowledgeBaseId: input.knowledgeBaseId },
+        data,
+      });
+      if (count === 0) return null;
+
+      const document = await tx.knowledgeDocument.findUniqueOrThrow({
+        where: { id: input.documentId },
+      });
 
       if (input.chunks) {
-        await client.query('DELETE FROM knowledge_chunks WHERE document_id = $1', [document.id]);
-        await insertChunks(client, {
+        await tx.knowledgeChunk.deleteMany({ where: { documentId: document.id } });
+        await insertChunks(tx, {
           documentId: document.id,
           knowledgeBaseId: input.knowledgeBaseId,
-          category: document.category,
+          category: document.category as KbCategory,
           chunks: input.chunks,
         });
       } else if (input.category) {
-        await client.query('UPDATE knowledge_chunks SET category = $2 WHERE document_id = $1', [
-          document.id,
-          document.category,
-        ]);
+        await tx.knowledgeChunk.updateMany({
+          where: { documentId: document.id },
+          data: { category: document.category },
+        });
       }
 
       return toDocument(document);
@@ -244,17 +205,20 @@ export const knowledgeBaseRepository = {
   },
 
   async deleteDocument(knowledgeBaseId: string, documentId: string): Promise<boolean> {
-    const { rowCount } = await query(
-      'DELETE FROM knowledge_documents WHERE id = $1 AND knowledge_base_id = $2',
-      [documentId, knowledgeBaseId],
-    );
-    return (rowCount ?? 0) > 0;
+    const { count } = await prisma.knowledgeDocument.deleteMany({
+      where: { id: documentId, knowledgeBaseId },
+    });
+    return count > 0;
   },
 
   /**
    * Hybrid retrieval: cosine similarity over every query variant plus a lexical
    * arm, best score per chunk wins. The lexical arm is what keeps retrieval
    * working for exact tokens (SKU codes, plan names) that embeddings blur.
+   *
+   * Raw SQL by necessity: the number of score expressions depends on how many
+   * query variants were generated, and `embedding` is a pgvector column that
+   * Prisma Client cannot reference.
    */
   async search(options: SearchOptions): Promise<KbPassage[]> {
     const params: unknown[] = [options.knowledgeBaseId];
@@ -282,22 +246,24 @@ export const knowledgeBaseRepository = {
     }
     if (scoreExpressions.length === 0) return [];
 
-    const conditions = ['c.knowledge_base_id = $1', "d.status = 'PUBLISHED'"];
+    // Prisma binds every parameter as text, so the uuid and text[] comparisons
+    // below need an explicit cast that the pg driver used to apply for us.
+    const conditions = ['c.knowledge_base_id = $1::uuid', "d.status = 'PUBLISHED'"];
     if (options.categories.length > 0) {
       params.push(options.categories);
       conditions.push(`c.category = ANY ($${params.length}::text[])`);
     }
 
     params.push(options.limit);
-    const { rows } = await query<PassageRow>(
+    const rows = await prisma.$queryRawUnsafe<PassageRow[]>(
       `SELECT c.document_id, d.title AS document_title, c.category, c.content,
-              GREATEST(${scoreExpressions.join(', ')}) AS similarity
+              GREATEST(${scoreExpressions.join(', ')})::float8 AS similarity
        FROM knowledge_chunks c
        JOIN knowledge_documents d ON d.id = c.document_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY similarity DESC
        LIMIT $${params.length}`,
-      params,
+      ...params,
     );
 
     return rows.map((row) => ({
@@ -311,28 +277,27 @@ export const knowledgeBaseRepository = {
 
   /** Which categories actually hold published content - narrows the classifier. */
   async availableCategories(knowledgeBaseId: string): Promise<KbCategory[]> {
-    const { rows } = await query<{ category: KbCategory }>(
-      `SELECT DISTINCT c.category
-       FROM knowledge_chunks c
-       JOIN knowledge_documents d ON d.id = c.document_id
-       WHERE c.knowledge_base_id = $1 AND d.status = 'PUBLISHED'`,
-      [knowledgeBaseId],
-    );
+    // SELECT DISTINCT in the database: Prisma's `distinct` would pull every chunk
+    // row back to Node just to throw the duplicates away.
+    const rows = await prisma.$queryRaw<Array<{ category: KbCategory }>>`
+      SELECT DISTINCT c.category
+      FROM knowledge_chunks c
+      JOIN knowledge_documents d ON d.id = c.document_id
+      WHERE c.knowledge_base_id = ${knowledgeBaseId}::uuid AND d.status = 'PUBLISHED'`;
     return rows.map((row) => row.category);
   },
 
   async documentsMissingEmbeddings(knowledgeBaseId: string): Promise<number> {
-    const { rows } = await query<{ count: number }>(
-      `SELECT count(*)::int AS count FROM knowledge_chunks
-       WHERE knowledge_base_id = $1 AND embedding IS NULL`,
-      [knowledgeBaseId],
-    );
+    // `embedding` is an Unsupported column, so it can only be filtered in SQL.
+    const rows = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT count(*)::int AS count FROM knowledge_chunks
+      WHERE knowledge_base_id = ${knowledgeBaseId}::uuid AND embedding IS NULL`;
     return rows[0]?.count ?? 0;
   },
 };
 
 const insertChunks = async (
-  client: PoolClient,
+  tx: Prisma.TransactionClient,
   input: {
     documentId: string;
     knowledgeBaseId: string;
@@ -342,19 +307,12 @@ const insertChunks = async (
 ): Promise<void> => {
   let index = 0;
   for (const chunk of input.chunks) {
-    await client.query(
-      `INSERT INTO knowledge_chunks
-         (document_id, knowledge_base_id, category, chunk_index, content, embedding)
-       VALUES ($1, $2, $3, $4, $5, $6::vector)`,
-      [
-        input.documentId,
-        input.knowledgeBaseId,
-        input.category,
-        index,
-        chunk.content,
-        chunk.embedding ? toVectorLiteral(chunk.embedding) : null,
-      ],
-    );
+    const embedding = chunk.embedding ? toVectorLiteral(chunk.embedding) : null;
+    await tx.$executeRaw`
+      INSERT INTO knowledge_chunks
+        (document_id, knowledge_base_id, category, chunk_index, content, embedding)
+      VALUES (${input.documentId}::uuid, ${input.knowledgeBaseId}::uuid, ${input.category},
+              ${index}, ${chunk.content}, ${embedding}::vector)`;
     index += 1;
   }
 };

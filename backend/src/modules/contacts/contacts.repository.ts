@@ -1,20 +1,6 @@
 import type { Contact, EligibilityStatus } from '@voiceops/shared';
-import { query } from '../../database/client.js';
-
-interface ContactRow {
-  id: string;
-  name: string;
-  phone: string;
-  company: string | null;
-  email: string | null;
-  tags: string[];
-  eligibility_status: EligibilityStatus;
-  created_at: Date;
-  updated_at: Date;
-}
-
-const COLUMNS =
-  'id, name, phone, company, email, tags, eligibility_status, created_at, updated_at';
+import type { Contact as ContactRow, Prisma } from '@prisma/client';
+import { prisma } from '../../database/client.js';
 
 export const toContact = (row: ContactRow): Contact => ({
   id: row.id,
@@ -23,9 +9,9 @@ export const toContact = (row: ContactRow): Contact => ({
   company: row.company,
   email: row.email,
   tags: row.tags,
-  eligibilityStatus: row.eligibility_status,
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString(),
+  eligibilityStatus: row.eligibilityStatus as EligibilityStatus,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
 });
 
 export interface ContactFilters {
@@ -45,125 +31,78 @@ export interface ContactWrite {
   eligibilityStatus: EligibilityStatus;
 }
 
+const buildWhere = (filters: ContactFilters): Prisma.ContactWhereInput => {
+  const where: Prisma.ContactWhereInput = {};
+  if (filters.search) {
+    where.OR = [
+      { name: { contains: filters.search, mode: 'insensitive' } },
+      { phone: { contains: filters.search } },
+    ];
+  }
+  if (filters.eligibilityStatus) where.eligibilityStatus = filters.eligibilityStatus;
+  if (filters.tag) where.tags = { has: filters.tag };
+  return where;
+};
+
 export const contactsRepository = {
   async list(filters: ContactFilters): Promise<{ items: Contact[]; total: number }> {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (filters.search) {
-      params.push(`%${filters.search.toLowerCase()}%`);
-      conditions.push(`(lower(name) LIKE $${params.length} OR phone LIKE $${params.length})`);
-    }
-    if (filters.eligibilityStatus) {
-      params.push(filters.eligibilityStatus);
-      conditions.push(`eligibility_status = $${params.length}`);
-    }
-    if (filters.tag) {
-      params.push(filters.tag);
-      conditions.push(`$${params.length} = ANY (tags)`);
-    }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const totalResult = await query<{ count: number }>(
-      `SELECT count(*)::int AS count FROM contacts ${where}`,
-      params,
-    );
-
-    params.push(filters.limit, filters.offset);
-    const { rows } = await query<ContactRow>(
-      `SELECT ${COLUMNS} FROM contacts ${where}
-       ORDER BY created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params,
-    );
-
-    return { items: rows.map(toContact), total: totalResult.rows[0]?.count ?? 0 };
+    const where = buildWhere(filters);
+    const [rows, total] = await prisma.$transaction([
+      prisma.contact.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: filters.limit,
+        skip: filters.offset,
+      }),
+      prisma.contact.count({ where }),
+    ]);
+    return { items: rows.map(toContact), total };
   },
 
   async findById(id: string): Promise<Contact | null> {
-    const { rows } = await query<ContactRow>(
-      `SELECT ${COLUMNS} FROM contacts WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? toContact(rows[0]) : null;
+    const row = await prisma.contact.findUnique({ where: { id } });
+    return row ? toContact(row) : null;
   },
 
   async findByPhone(phone: string): Promise<Contact | null> {
-    const { rows } = await query<ContactRow>(
-      `SELECT ${COLUMNS} FROM contacts WHERE phone = $1 LIMIT 1`,
-      [phone],
-    );
-    return rows[0] ? toContact(rows[0]) : null;
+    const row = await prisma.contact.findUnique({ where: { phone } });
+    return row ? toContact(row) : null;
   },
 
   async create(input: ContactWrite): Promise<Contact> {
-    const { rows } = await query<ContactRow>(
-      `INSERT INTO contacts (name, phone, company, email, tags, eligibility_status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING ${COLUMNS}`,
-      [
-        input.name,
-        input.phone,
-        input.company,
-        input.email,
-        input.tags,
-        input.eligibilityStatus,
-      ],
-    );
-    return toContact(rows[0] as ContactRow);
+    return toContact(await prisma.contact.create({ data: input }));
   },
 
   /** Used by CSV import: last write wins on an existing phone number. */
   async upsertByPhone(input: ContactWrite): Promise<Contact> {
-    const { rows } = await query<ContactRow>(
-      `INSERT INTO contacts (name, phone, company, email, tags, eligibility_status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (phone) DO UPDATE SET
-         name = EXCLUDED.name,
-         company = COALESCE(EXCLUDED.company, contacts.company),
-         email = COALESCE(EXCLUDED.email, contacts.email),
-         tags = EXCLUDED.tags,
-         eligibility_status = EXCLUDED.eligibility_status
-       RETURNING ${COLUMNS}`,
-      [
-        input.name,
-        input.phone,
-        input.company,
-        input.email,
-        input.tags,
-        input.eligibilityStatus,
-      ],
-    );
-    return toContact(rows[0] as ContactRow);
+    const row = await prisma.contact.upsert({
+      where: { phone: input.phone },
+      create: input,
+      // A blank column in the CSV must not wipe a value that is already there,
+      // so company/email are only written when the import supplied them.
+      update: {
+        name: input.name,
+        ...(input.company === null ? {} : { company: input.company }),
+        ...(input.email === null ? {} : { email: input.email }),
+        tags: input.tags,
+        eligibilityStatus: input.eligibilityStatus,
+      },
+    });
+    return toContact(row);
   },
 
   async update(id: string, input: Partial<ContactWrite>): Promise<Contact | null> {
-    const columnByField: Record<keyof ContactWrite, string> = {
-      name: 'name',
-      phone: 'phone',
-      company: 'company',
-      email: 'email',
-      tags: 'tags',
-      eligibilityStatus: 'eligibility_status',
-    };
+    const data: Prisma.ContactUncheckedUpdateManyInput = {};
+    if (input.name !== undefined) data.name = input.name;
+    if (input.phone !== undefined) data.phone = input.phone;
+    if (input.company !== undefined) data.company = input.company;
+    if (input.email !== undefined) data.email = input.email;
+    if (input.tags !== undefined) data.tags = input.tags;
+    if (input.eligibilityStatus !== undefined) data.eligibilityStatus = input.eligibilityStatus;
+    if (Object.keys(data).length === 0) return this.findById(id);
 
-    const assignments: string[] = [];
-    const params: unknown[] = [];
-    for (const [field, column] of Object.entries(columnByField) as Array<
-      [keyof ContactWrite, string]
-    >) {
-      const value = input[field];
-      if (value === undefined) continue;
-      params.push(value);
-      assignments.push(`${column} = $${params.length}`);
-    }
-    if (assignments.length === 0) return this.findById(id);
-
-    params.push(id);
-    const { rows } = await query<ContactRow>(
-      `UPDATE contacts SET ${assignments.join(', ')} WHERE id = $${params.length} RETURNING ${COLUMNS}`,
-      params,
-    );
-    return rows[0] ? toContact(rows[0]) : null;
+    // updateMany rather than update so a missing row is null, not a thrown P2025.
+    const { count } = await prisma.contact.updateMany({ where: { id }, data });
+    return count > 0 ? this.findById(id) : null;
   },
 };
