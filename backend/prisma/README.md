@@ -32,11 +32,12 @@ migrations and must be written by hand when it changes:
 | partial index on unused password reset tokens | `migrations/0_init` |
 | `set_updated_at()` triggers | `migrations/0_init` |
 
-Because of the ivfflat index, `prisma migrate dev` reports one piece of drift -
-it sees a plain index Prisma did not declare. That is expected. **Never accept a
-`migrate dev` prompt to reset the database**, and check any generated migration
-for a `DROP INDEX knowledge_chunks_embedding_idx` before committing it: that index
-is what makes retrieval fast.
+The ivfflat index is a special case: it is declared in `schema.prisma` by name
+(`@@index([embedding], map: "knowledge_chunks_embedding_idx")`) even though Prisma
+models it as an ordinary index. That declaration is load-bearing - without it every
+`migrate dev` generates a `DROP INDEX knowledge_chunks_embedding_idx` for an index
+it does not know it has, and retrieval silently falls back to a sequential scan.
+Do not remove it, and never accept a `migrate dev` prompt to reset the database.
 
 The enum-like columns (`status`, `outcome`, `role`, `category`, ...) are `String`
 in the schema on purpose. The union types in `@voiceops/shared` are the source of

@@ -4,9 +4,10 @@
 // them and the database is the owner of both:
 //   - CHECK constraints on the status/role/category columns. Those columns stay
 //     `String` and the union types in @voiceops/shared remain the source of truth.
-//   - The pgvector column's indexes, the gin/partial indexes, and the updated_at
-//     triggers. They live in the SQL migration; `prisma migrate dev` reports them
-//     as drift, which is expected - see backend/prisma/README.md.
+//   - The index *definitions* that are not plain btrees (ivfflat on the embedding,
+//     gin on the chunk text, the expression and partial indexes) and the
+//     updated_at triggers. They live in the SQL migration - see
+//     backend/prisma/README.md before changing any of them.
 
 generator client {
   provider = "prisma-client-js"
@@ -120,6 +121,7 @@ model KnowledgeChunk {
   knowledgeBase KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([knowledgeBaseId, category], map: "knowledge_chunks_kb_idx")
+  @@index([embedding], map: "knowledge_chunks_embedding_idx")
   @@map("knowledge_chunks")
 }
 
