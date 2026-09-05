@@ -1,11 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { PageHeader } from '@/components/layout/app-shell';
-import { Button, Card, Field, Input, Select, Spinner, StatusMessage } from '@/components/ui';
+import {
+  Button,
+  Card,
+  Combobox,
+  Field,
+  Input,
+  SimpleSelect,
+  Spinner,
+  StatusMessage,
+} from '@/components/ui';
 import { contactsApi, templatesApi, callsApi } from '@/services/endpoints';
 
 const schema = z
@@ -34,10 +43,14 @@ export const NewCallPage = () => {
 
   const {
     register,
+    control,
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { mode: 'contact' } });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { mode: 'contact', contactId: '', templateId: '' },
+  });
 
   const mode = watch('mode');
   const templateId = watch('templateId');
@@ -69,10 +82,21 @@ export const NewCallPage = () => {
       <Card className="max-w-2xl">
         <form onSubmit={onSubmit} noValidate>
           <Field label="Who are we calling?" htmlFor="mode">
-            <Select id="mode" {...register('mode')}>
-              <option value="contact">A saved contact (consent already recorded)</option>
-              <option value="phone">A phone number I will type in</option>
-            </Select>
+            <Controller
+              control={control}
+              name="mode"
+              render={({ field }) => (
+                <SimpleSelect
+                  id="mode"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  options={[
+                    { value: 'contact', label: 'A saved contact (consent already recorded)' },
+                    { value: 'phone', label: 'A phone number I will type in' },
+                  ]}
+                />
+              )}
+            />
           </Field>
 
           {mode === 'contact' ? (
@@ -83,14 +107,26 @@ export const NewCallPage = () => {
               hint="Only contacts marked Eligible to call are listed."
               error={errors.contactId?.message}
             >
-              <Select id="contactId" {...register('contactId')}>
-                <option value="">Select a contact</option>
-                {contacts.data?.data.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.name} — {contact.phone}
-                  </option>
-                ))}
-              </Select>
+              <Controller
+                control={control}
+                name="contactId"
+                render={({ field }) => (
+                  // A combobox rather than a dropdown: this list runs to hundreds of
+                  // names, and an operator knows the name, not its position.
+                  <Combobox
+                    id="contactId"
+                    value={field.value ?? ''}
+                    onValueChange={field.onChange}
+                    placeholder="Select a contact"
+                    searchPlaceholder="Search by name or number"
+                    emptyMessage="No eligible contact matches."
+                    options={(contacts.data?.data ?? []).map((contact) => ({
+                      value: contact.id,
+                      label: `${contact.name} — ${contact.phone}`,
+                    }))}
+                  />
+                )}
+              />
             </Field>
           ) : (
             <Field
@@ -105,18 +141,26 @@ export const NewCallPage = () => {
           )}
 
           <Field label="Call template" htmlFor="templateId" required error={errors.templateId?.message}>
-            <Select id="templateId" {...register('templateId')}>
-              <option value="">Select a template</option>
-              {templates.data?.data.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="templateId"
+              render={({ field }) => (
+                <SimpleSelect
+                  id="templateId"
+                  value={field.value ?? ''}
+                  onValueChange={field.onChange}
+                  placeholder="Select a template"
+                  options={(templates.data?.data ?? []).map((template) => ({
+                    value: template.id,
+                    label: template.name,
+                  }))}
+                />
+              )}
+            />
           </Field>
 
           {selectedTemplate ? (
-            <fieldset className="mb-4 rounded-md border border-border p-4">
+            <fieldset className="mb-4 min-w-0 rounded-md border border-border p-3 sm:p-4">
               <legend className="px-1 text-sm font-medium">Template variables</legend>
               <p className="mb-3 text-xs text-muted-foreground">
                 {selectedTemplate.objective}
@@ -150,7 +194,7 @@ export const NewCallPage = () => {
             </fieldset>
           ) : null}
 
-          <Button type="submit" loading={createCall.isPending}>
+          <Button type="submit" loading={createCall.isPending} className="w-full sm:w-auto">
             {createCall.isPending ? 'Dialling' : 'Start call'}
           </Button>
 

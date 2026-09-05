@@ -11,13 +11,18 @@ import {
   ErrorState,
   Field,
   Input,
-  Select,
+  SimpleSelect,
   Spinner,
   StatusMessage,
   Table,
-  Td,
+  TableBody,
+  TableCaption,
+  TableCell,
   Textarea,
-  Th,
+  toast,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui';
 import { contactsApi } from '@/services/endpoints';
 
@@ -59,7 +64,14 @@ export const ContactsPage = () => {
   const setEligibilityStatus = useMutation({
     mutationFn: (input: { id: string; status: EligibilityStatus }) =>
       contactsApi.update(input.id, { eligibilityStatus: input.status }),
-    onSuccess: () => void invalidate(),
+    onSuccess: (_result, input) => {
+      // Consent decides whether this number can be dialled at all, so the change
+      // is confirmed explicitly rather than left to a silently re-rendered row.
+      toast.success(`Consent set to ${ELIGIBILITY_LABEL[input.status]}.`);
+      void invalidate();
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not update consent.'),
   });
 
   return (
@@ -69,7 +81,7 @@ export const ContactsPage = () => {
         description="A contact must be marked Eligible to call before the agent will dial it."
       />
 
-      <div className="mb-6 grid gap-5 lg:grid-cols-2">
+      <div className="mb-6 grid gap-4 sm:gap-5 lg:grid-cols-2">
         <Card>
           <CardTitle>Add a contact</CardTitle>
           <form
@@ -103,7 +115,7 @@ export const ContactsPage = () => {
                 onChange={(event) => setForm({ ...form, company: event.target.value })}
               />
             </Field>
-            <Button type="submit" loading={createContact.isPending}>
+            <Button type="submit" loading={createContact.isPending} className="w-full sm:w-auto">
               Add contact
             </Button>
             {createContact.isError ? (
@@ -140,10 +152,16 @@ export const ContactsPage = () => {
                 value={csv}
                 onChange={(event) => setCsv(event.target.value)}
                 placeholder={CSV_PLACEHOLDER}
-                className="font-mono text-xs"
+                // 16px on mobile keeps iOS from zooming in on focus; the dense size returns from sm up.
+                className="font-mono text-base sm:text-xs"
               />
             </Field>
-            <Button type="submit" loading={importCsv.isPending} disabled={!csv.trim()}>
+            <Button
+              type="submit"
+              loading={importCsv.isPending}
+              disabled={!csv.trim()}
+              className="w-full sm:w-auto"
+            >
               Import contacts
             </Button>
             {importCsv.data ? (
@@ -161,7 +179,7 @@ export const ContactsPage = () => {
         </Card>
       </div>
 
-      <form className="mb-4 grid gap-4 md:grid-cols-2" role="search" aria-label="Filter contacts">
+      <form className="mb-4 grid gap-x-4 sm:grid-cols-2" role="search" aria-label="Filter contacts">
         <Field label="Search" htmlFor="contact-search">
           <Input
             id="contact-search"
@@ -172,18 +190,16 @@ export const ContactsPage = () => {
           />
         </Field>
         <Field label="Eligibility" htmlFor="eligibility">
-          <Select
+          <SimpleSelect
             id="eligibility"
             value={eligibility}
-            onChange={(event) => setEligibility(event.target.value)}
-          >
-            <option value="">All contacts</option>
-            {ELIGIBILITY_STATUS.map((value) => (
-              <option key={value} value={value}>
-                {ELIGIBILITY_LABEL[value]}
-              </option>
-            ))}
-          </Select>
+            onValueChange={setEligibility}
+            placeholder="All contacts"
+            options={[
+              { value: '', label: 'All contacts' },
+              ...ELIGIBILITY_STATUS.map((value) => ({ value, label: ELIGIBILITY_LABEL[value] })),
+            ]}
+          />
         </Field>
       </form>
 
@@ -200,46 +216,48 @@ export const ContactsPage = () => {
 
       {contacts.data && contacts.data.data.length > 0 ? (
         <Table>
-          <caption className="sr-only">Contacts</caption>
-          <thead>
-            <tr>
-              <Th>Name</Th>
-              <Th>Phone</Th>
-              <Th>Company</Th>
-              <Th>Consent</Th>
-              <Th>Change consent</Th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableCaption className="sr-only">Contacts</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Company</TableHead>
+              <TableHead>Consent</TableHead>
+              <TableHead>Change consent</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {contacts.data.data.map((contact) => (
-              <tr key={contact.id}>
-                <Td className="font-medium">{contact.name}</Td>
-                <Td className="tabular-nums">{contact.phone}</Td>
-                <Td>{contact.company ?? '—'}</Td>
-                <Td>
+              <TableRow key={contact.id}>
+                <TableCell label="Name" className="font-medium">
+                  {contact.name}
+                </TableCell>
+                <TableCell label="Phone" className="tabular-nums">
+                  {contact.phone}
+                </TableCell>
+                <TableCell label="Company">{contact.company ?? '—'}</TableCell>
+                <TableCell label="Consent">
                   <EligibilityBadge status={contact.eligibilityStatus} />
-                </Td>
-                <Td>
-                  <Select
+                </TableCell>
+                <TableCell label="Change consent" stack>
+                  <SimpleSelect
                     aria-label={`Consent status for ${contact.name}`}
                     value={contact.eligibilityStatus}
-                    onChange={(event) =>
+                    onValueChange={(status) =>
                       setEligibilityStatus.mutate({
                         id: contact.id,
-                        status: event.target.value as EligibilityStatus,
+                        status: status as EligibilityStatus,
                       })
                     }
-                  >
-                    {ELIGIBILITY_STATUS.map((value) => (
-                      <option key={value} value={value}>
-                        {ELIGIBILITY_LABEL[value]}
-                      </option>
-                    ))}
-                  </Select>
-                </Td>
-              </tr>
+                    options={ELIGIBILITY_STATUS.map((value) => ({
+                      value,
+                      label: ELIGIBILITY_LABEL[value],
+                    }))}
+                  />
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </Table>
       ) : null}
     </>

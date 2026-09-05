@@ -2,33 +2,138 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * shadcn/ui "new-york" style, Slate base — the CRM preset.
+ *
+ * Slate is the cool-toned neutral: it recedes behind dense tables so the status
+ * colours (a call's status, an outcome, a consent state) are the only saturated
+ * thing on screen. Warm bases (Stone, Neutral) fight those badges for attention.
+ * The primary stays the deep blue this console already used.
+ *
+ * Every colour is a token. Nothing below hard-codes a hex.
+ */
+
 @layer base {
   :root {
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
+
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
     --primary: 222 65% 32%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 210 40% 98%;
+
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
+
     --muted: 210 40% 96%;
     /* Contrast checked against --muted and --background for body text. */
     --muted-foreground: 215 20% 35%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
     --destructive: 0 72% 40%;
     --destructive-foreground: 0 0% 100%;
+
+    /* CRM status colours. Not part of stock shadcn, but a call has more states
+       than "fine" and "destructive". All are AA against their foreground. */
     --success: 152 65% 26%;
     --success-foreground: 0 0% 100%;
     --warning: 35 92% 28%;
     --warning-foreground: 0 0% 100%;
+    --info: 214 80% 36%;
+    --info-foreground: 0 0% 100%;
+
     --border: 214 32% 88%;
     --input: 214 32% 84%;
     --ring: 222 65% 32%;
+
+    /* The sidebar is its own surface, a shade off the page, the way a CRM shell reads. */
+    --sidebar: 210 40% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+
+    /* Modal scrim. Deliberately NOT --foreground: that inverts in dark mode and
+       would wash the page with light instead of dimming it. */
+    --overlay: 222 47% 6%;
+
     --radius: 0.5rem;
   }
 
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 44% 10%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 44% 10%;
+    --popover-foreground: 210 40% 96%;
+
+    /* Lifted well above the dark ground: the deep light-mode blue is unreadable here. */
+    --primary: 213 90% 62%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 68%;
+
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 222 47% 11%;
+
+    --success: 152 55% 48%;
+    --success-foreground: 222 47% 11%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 222 47% 11%;
+    --info: 213 90% 62%;
+    --info-foreground: 222 47% 11%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 24%;
+    --ring: 213 90% 62%;
+
+    --sidebar: 222 47% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 217 33% 18%;
+
+    /* Same dark scrim in both themes, only heavier so it reads over a dark page. */
+    --overlay: 222 47% 2%;
+  }
+}
+
+@layer base {
   * {
     @apply border-border;
+  }
+
+  html {
+    /* Anchor jumps and scrollTo calls glide instead of teleporting. */
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   body {
@@ -36,11 +141,26 @@
     font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     /* Operations UI: never below 14px. */
     font-size: 15px;
+    /* A stray wide element should never make the whole page pan sideways. */
+    overflow-x: hidden;
+    /* Kill the grey flash on tap; the focus and active styles carry the feedback. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* A visible focus ring on every interactive element, including via keyboard. */
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Long unbroken strings (phone numbers, URLs, IDs) must wrap rather than widen the page. */
+  h1, h2, h3, p, li, dd, dt, td, th, caption {
+    overflow-wrap: break-word;
+  }
+
+  /* Tabular figures everywhere a number is compared down a column. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -49,5 +169,75 @@
   .skip-link {
     @apply sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50
            focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground;
+  }
+
+  /* Respect the notch and the home indicator on iOS. */
+  .safe-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /*
+   * Responsive tables. Below md a seven-column operations table is unreadable and
+   * side-scrolling hides the columns that matter, so each row is restacked as a
+   * card with its header label printed beside each value. The markup stays a real
+   * <table>, so screen readers and the header/cell association are untouched.
+   */
+  @media (max-width: 767px) {
+    .table-responsive table,
+    .table-responsive tbody,
+    .table-responsive tr,
+    .table-responsive td {
+      display: block;
+      width: 100%;
+    }
+
+    .table-responsive thead {
+      /* Visually hidden, still announced. */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    .table-responsive tbody tr,
+    /* TableBody sets [&_tr:last-child]:border-0 for the desktop table; the last
+       card still needs its outline, and that selector out-specifies a plain one. */
+    .table-responsive tbody tr:last-child {
+      @apply mb-3 rounded-lg border border-border bg-card p-1 shadow-sm;
+    }
+
+    .table-responsive tbody td {
+      @apply flex items-start justify-between gap-4 border-0 px-3 py-2 text-sm;
+      border-bottom: 1px solid hsl(var(--border) / 0.6);
+    }
+
+    .table-responsive tbody tr td:last-child {
+      border-bottom: 0;
+    }
+
+    /* The column header, repeated per cell so a value is never orphaned. */
+    .table-responsive tbody td[data-label]::before {
+      content: attr(data-label);
+      @apply shrink-0 pr-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+    }
+
+    /* Cells holding controls get the full width under their label. */
+    .table-responsive tbody td[data-stack='true'] {
+      @apply flex-col items-stretch gap-2;
+    }
   }
 }

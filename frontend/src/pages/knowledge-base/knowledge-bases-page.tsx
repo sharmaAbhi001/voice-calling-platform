@@ -13,8 +13,12 @@ import {
   Spinner,
   StatusMessage,
   Table,
-  Td,
-  Th,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/utils';
 import { knowledgeApi } from '@/services/endpoints';
@@ -64,7 +68,7 @@ export const KnowledgeBasesPage = () => {
               onChange={(event) => setForm({ ...form, description: event.target.value })}
             />
           </Field>
-          <Button type="submit" loading={create.isPending}>
+          <Button type="submit" loading={create.isPending} className="w-full sm:w-auto">
             Create
           </Button>
           {create.isError ? (
@@ -86,32 +90,36 @@ export const KnowledgeBasesPage = () => {
 
       {bases.data && bases.data.data.length > 0 ? (
         <Table>
-          <caption className="sr-only">Knowledge bases</caption>
-          <thead>
-            <tr>
-              <Th>Name</Th>
-              <Th>Description</Th>
-              <Th>Published documents</Th>
-              <Th>Updated</Th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableCaption className="sr-only">Knowledge bases</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Published documents</TableHead>
+              <TableHead>Updated</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {bases.data.data.map((base) => (
-              <tr key={base.id}>
-                <Td>
+              <TableRow key={base.id}>
+                <TableCell label="Name">
                   <Link
                     className="font-medium underline underline-offset-2"
                     to={`/knowledge-bases/${base.id}`}
                   >
                     {base.name}
                   </Link>
-                </Td>
-                <Td className="text-muted-foreground">{base.description ?? '—'}</Td>
-                <Td className="tabular-nums">{base.documentCount ?? 0}</Td>
-                <Td>{formatDateTime(base.updatedAt)}</Td>
-              </tr>
+                </TableCell>
+                <TableCell label="Description" className="text-muted-foreground">
+                  {base.description ?? '—'}
+                </TableCell>
+                <TableCell label="Published documents" className="tabular-nums">
+                  {base.documentCount ?? 0}
+                </TableCell>
+                <TableCell label="Updated">{formatDateTime(base.updatedAt)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </Table>
       ) : null}
     </>

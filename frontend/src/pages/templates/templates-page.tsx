@@ -1,15 +1,27 @@
+import { Copy, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
   Button,
+  ConfirmDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   EmptyState,
   ErrorState,
-  Spinner,
+  TableSkeleton,
+  toast,
   Table,
-  Td,
-  Th,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   linkButtonClass,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/utils';
@@ -26,15 +38,23 @@ export const TemplatesPage = () => {
 
   const duplicate = useMutation({
     mutationFn: (id: string) => templatesApi.duplicate(id),
-    onSuccess: () => void invalidate(),
+    onSuccess: (created) => {
+      toast.success(`Duplicated as "${created.name}".`);
+      void invalidate();
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not duplicate the template.'),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => templatesApi.remove(id),
     onSuccess: () => {
       setConfirmDelete(null);
+      toast.success('Template deleted.');
       void invalidate();
     },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not delete the template.'),
   });
 
   const baseName = (id: string | null) =>
@@ -52,7 +72,7 @@ export const TemplatesPage = () => {
         }
       />
 
-      {templates.isLoading ? <Spinner label="Loading templates" /> : null}
+      {templates.isLoading ? <TableSkeleton columns={5} /> : null}
       {templates.isError ? (
         <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />
       ) : null}
@@ -68,70 +88,88 @@ export const TemplatesPage = () => {
         />
       ) : null}
 
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title="Delete this template?"
+        description="Calls already placed with it keep their transcripts, but no new call can use it. This cannot be undone."
+        confirmLabel="Delete template"
+        loading={remove.isPending}
+        onConfirm={() => {
+          if (confirmDelete) remove.mutate(confirmDelete);
+        }}
+      />
+
       {templates.data && templates.data.data.length > 0 ? (
         <Table>
-          <caption className="sr-only">Call templates</caption>
-          <thead>
-            <tr>
-              <Th>Name</Th>
-              <Th>Objective</Th>
-              <Th>Knowledge base</Th>
-              <Th>Updated</Th>
-              <Th>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableCaption className="sr-only">Call templates</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Objective</TableHead>
+              <TableHead>Knowledge base</TableHead>
+              <TableHead>Updated</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {templates.data.data.map((template) => (
-              <tr key={template.id}>
-                <Td>
+              <TableRow key={template.id}>
+                <TableCell label="Name">
                   <Link
                     className="font-medium underline underline-offset-2"
                     to={`/templates/${template.id}`}
                   >
                     {template.name}
                   </Link>
-                </Td>
-                <Td className="max-w-md text-muted-foreground">{template.objective}</Td>
-                <Td>{baseName(template.knowledgeBaseId)}</Td>
-                <Td>{formatDateTime(template.updatedAt)}</Td>
-                <Td>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => duplicate.mutate(template.id)}
-                      loading={duplicate.isPending && duplicate.variables === template.id}
-                    >
-                      Duplicate
-                    </Button>
-                    {confirmDelete === template.id ? (
-                      <>
+                </TableCell>
+                <TableCell label="Objective" className="max-w-md text-muted-foreground">
+                  {template.objective}
+                </TableCell>
+                <TableCell label="Knowledge base">{baseName(template.knowledgeBaseId)}</TableCell>
+                <TableCell label="Updated">{formatDateTime(template.updatedAt)}</TableCell>
+                <TableCell label="Actions" stack>
+                  {/* Row actions collapse into one menu: three buttons per row is a
+                      lot of tap targets on a phone, and only one is used often. */}
+                  <div className="flex justify-end md:justify-start">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => remove.mutate(template.id)}
-                          loading={remove.isPending}
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Actions for ${template.name}`}
                         >
-                          Confirm delete
+                          <MoreHorizontal aria-hidden="true" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmDelete(template.id)}
-                      >
-                        Delete
-                      </Button>
-                    )}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link to={`/templates/${template.id}`}>
+                            <Pencil aria-hidden="true" />
+                            Edit
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => duplicate.mutate(template.id)}>
+                          <Copy aria-hidden="true" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onSelect={() => setConfirmDelete(template.id)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                </Td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </Table>
       ) : null}
     </>

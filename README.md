@@ -54,6 +54,8 @@ out step by step, including the SIP trunk setup for Twilio, Plivo or Exotel, in
 | Document | What is in it |
 | --- | --- |
 | [docs/DEVELOPER-GUIDE-HINGLISH.md](docs/DEVELOPER-GUIDE-HINGLISH.md) | Onboarding walkthrough in Hinglish — how the whole thing works, with flow diagrams, for someone new to voice/AI |
+| [docs/AGENT-INTERNALS-HINGLISH.md](docs/AGENT-INTERNALS-HINGLISH.md) | File-by-file map of every folder, plus a deep walkthrough of the agent: how the prompt is assembled, where each piece is stored, step-back prompting, and the TypeScript patterns used throughout |
+| [docs/CALL-FLOW-HLD-LLD.md](docs/CALL-FLOW-HLD-LLD.md) | HLD + LLD for one outbound call: every step from the Call button to the saved transcript, each with the file, function and line that implements it |
 | [docs/SETUP-ACCOUNTS.md](docs/SETUP-ACCOUNTS.md) | Where to create each account, what to configure, which `.env` key each value goes into |
 | [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | How the agent is kept from making things up: grounding, step-back prompting, query classification, outcome verification |
 | [docs/INDIA-COMPLIANCE.md](docs/INDIA-COMPLIANCE.md) | Consent, DND, caller ID and recording disclosure — what the code enforces and what you must decide |

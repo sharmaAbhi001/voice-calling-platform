@@ -8,16 +8,18 @@ import {
   Button,
   Card,
   CardTitle,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   Spinner,
   StatusMessage,
+  toast,
 } from '@/components/ui';
 import { formatDateTime, formatDuration } from '@/lib/utils';
 import { callsApi } from '@/services/endpoints';
 
 const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-  <div className="flex justify-between gap-4 border-b border-border py-2 last:border-0">
+  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2 last:border-0">
     <dt className="text-sm text-muted-foreground">{label}</dt>
     <dd className="text-sm font-medium">{value}</dd>
   </div>
@@ -42,7 +44,10 @@ export const CallDetailPage = () => {
     onSuccess: (updated) => {
       queryClient.setQueryData(['calls', id], updated);
       setConfirmingEnd(false);
+      toast.success('The call was ended.');
     },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not end the call.'),
   });
 
   const loadRecording = useMutation({
@@ -63,41 +68,33 @@ export const CallDetailPage = () => {
         title={data.contactName ?? 'Call detail'}
         description={`${data.phone} · ${data.templateName ?? 'No template'}`}
         action={
-          <div className="flex items-center gap-2">
-            <Link to="/calls" className="text-sm underline underline-offset-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <Link
+              to="/calls"
+              className="order-last text-sm underline underline-offset-2 sm:order-first"
+            >
               Back to calls
             </Link>
             {isLive ? (
-              confirmingEnd ? (
-                <>
-                  <Button
-                    variant="destructive"
-                    loading={endCall.isPending}
-                    onClick={() => endCall.mutate()}
-                  >
-                    Yes, end the call
-                  </Button>
-                  <Button variant="outline" onClick={() => setConfirmingEnd(false)}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="destructive" onClick={() => setConfirmingEnd(true)}>
-                  End call
-                </Button>
-              )
+              <Button variant="destructive" onClick={() => setConfirmingEnd(true)}>
+                End call
+              </Button>
             ) : null}
           </div>
         }
       />
 
-      {confirmingEnd ? (
-        <p role="alert" className="mb-4 rounded-md bg-warning/10 px-3 py-2 text-sm">
-          Ending the call hangs up on the customer immediately. This cannot be undone.
-        </p>
-      ) : null}
+      <ConfirmDialog
+        open={confirmingEnd}
+        onOpenChange={setConfirmingEnd}
+        title="End this call now?"
+        description="Ending the call hangs up on the customer immediately. This cannot be undone."
+        confirmLabel="Yes, end the call"
+        loading={endCall.isPending}
+        onConfirm={() => endCall.mutate()}
+      />
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-3">
         <Card>
           <CardTitle>Call</CardTitle>
           <dl>
@@ -170,13 +167,13 @@ export const CallDetailPage = () => {
         </Card>
       </div>
 
-      <Card className="mt-5">
+      <Card className="mt-4 sm:mt-5">
         <CardTitle>Transcript</CardTitle>
         {data.transcript && data.transcript.length > 0 ? (
           <ol className="space-y-3">
             {data.transcript.map((turn, index) => (
               <li key={`${turn.at}-${index}`} className="text-sm">
-                <span className="font-semibold">
+                <span className="mb-0.5 block font-semibold sm:mb-0 sm:inline">
                   {turn.speaker === 'AGENT' ? 'Agent' : 'Customer'}:
                 </span>{' '}
                 <span>{turn.text}</span>

@@ -10,11 +10,15 @@ import {
   ErrorState,
   Field,
   Input,
-  Select,
+  SimpleSelect,
   Spinner,
   Table,
-  Td,
-  Th,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   linkButtonClass,
 } from '@/components/ui';
 import { formatDateTime, formatDuration, maskPhone } from '@/lib/utils';
@@ -59,7 +63,7 @@ export const CallsPage = () => {
       />
 
       <form
-        className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-4"
+        className="mb-5 grid grid-cols-1 gap-x-4 sm:grid-cols-2 xl:grid-cols-4"
         onSubmit={(event) => {
           event.preventDefault();
           setPage(1);
@@ -78,25 +82,29 @@ export const CallsPage = () => {
         </Field>
 
         <Field label="Call status" htmlFor="status">
-          <Select id="status" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">All statuses</option>
-            {CALL_STATUS.map((value) => (
-              <option key={value} value={value}>
-                {CALL_STATUS_LABEL[value]}
-              </option>
-            ))}
-          </Select>
+          <SimpleSelect
+            id="status"
+            value={status}
+            onValueChange={setStatus}
+            placeholder="All statuses"
+            options={[
+              { value: '', label: 'All statuses' },
+              ...CALL_STATUS.map((value) => ({ value, label: CALL_STATUS_LABEL[value] })),
+            ]}
+          />
         </Field>
 
         <Field label="Business outcome" htmlFor="outcome">
-          <Select id="outcome" value={outcome} onChange={(event) => setOutcome(event.target.value)}>
-            <option value="">All outcomes</option>
-            {CALL_OUTCOME.map((value) => (
-              <option key={value} value={value}>
-                {CALL_OUTCOME_LABEL[value]}
-              </option>
-            ))}
-          </Select>
+          <SimpleSelect
+            id="outcome"
+            value={outcome}
+            onValueChange={setOutcome}
+            placeholder="All outcomes"
+            options={[
+              { value: '', label: 'All outcomes' },
+              ...CALL_OUTCOME.map((value) => ({ value, label: CALL_OUTCOME_LABEL[value] })),
+            ]}
+          />
         </Field>
 
         <Field label="From date" htmlFor="from">
@@ -122,52 +130,56 @@ export const CallsPage = () => {
       {query.data && query.data.data.length > 0 ? (
         <>
           <Table>
-            <caption className="sr-only">Outbound calls, newest first</caption>
-            <thead>
-              <tr>
-                <Th>Customer</Th>
-                <Th>Phone</Th>
-                <Th>Template</Th>
-                <Th>Status</Th>
-                <Th>Outcome</Th>
-                <Th>Duration</Th>
-                <Th>Started</Th>
-              </tr>
-            </thead>
-            <tbody>
+            <TableCaption className="sr-only">Outbound calls, newest first</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Template</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Outcome</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Started</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {query.data.data.map((call) => (
-                <tr key={call.id}>
-                  <Td>
+                <TableRow key={call.id}>
+                  <TableCell label="Customer">
                     <Link
                       className="font-medium underline underline-offset-2"
                       to={`/calls/${call.id}`}
                     >
                       {call.contactName ?? 'Unknown contact'}
                     </Link>
-                  </Td>
-                  <Td className="tabular-nums">{maskPhone(call.phone)}</Td>
-                  <Td>{call.templateName ?? '—'}</Td>
-                  <Td>
+                  </TableCell>
+                  <TableCell label="Phone" className="tabular-nums">
+                    {maskPhone(call.phone)}
+                  </TableCell>
+                  <TableCell label="Template">{call.templateName ?? '—'}</TableCell>
+                  <TableCell label="Status">
                     <CallStatusBadge status={call.status} />
-                  </Td>
-                  <Td>
+                  </TableCell>
+                  <TableCell label="Outcome">
                     <CallOutcomeBadge outcome={call.outcome} />
-                  </Td>
-                  <Td className="tabular-nums">{formatDuration(call.durationSeconds)}</Td>
-                  <Td>{formatDateTime(call.startedAt ?? call.createdAt)}</Td>
-                </tr>
+                  </TableCell>
+                  <TableCell label="Duration" className="tabular-nums">
+                    {formatDuration(call.durationSeconds)}
+                  </TableCell>
+                  <TableCell label="Started">{formatDateTime(call.startedAt ?? call.createdAt)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
+            </TableBody>
           </Table>
 
           <nav
-            className="mt-4 flex items-center justify-between"
+            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
             aria-label="Call list pagination"
           >
             <p className="text-sm text-muted-foreground">
               Page {page} of {totalPages} · {query.data.total} calls
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
               <Button
                 variant="outline"
                 size="sm"

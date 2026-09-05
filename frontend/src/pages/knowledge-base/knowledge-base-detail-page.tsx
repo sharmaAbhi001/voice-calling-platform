@@ -1,24 +1,38 @@
 import { KB_CATEGORY, KB_CATEGORY_LABEL, type KbCategory } from '@voiceops/shared';
+import { MoreHorizontal, Pencil, Trash2, TriangleAlert } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/app-shell';
 import {
+  Alert,
+  AlertDescription,
   Badge,
   Button,
+  ConfirmDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Card,
   CardTitle,
   EmptyState,
   ErrorState,
   Field,
   Input,
-  Select,
+  SimpleSelect,
   Spinner,
   StatusMessage,
   Table,
-  Td,
+  TableBody,
+  TableCaption,
+  TableCell,
   Textarea,
-  Th,
+  toast,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui';
 import { knowledgeApi } from '@/services/endpoints';
 
@@ -67,13 +81,21 @@ export const KnowledgeBaseDetailPage = () => {
     mutationFn: (documentId: string) => knowledgeApi.deleteDocument(id, documentId),
     onSuccess: () => {
       setConfirmDelete(null);
+      toast.success('Document deleted.');
       invalidate();
     },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not delete the document.'),
   });
 
   const reindex = useMutation({
     mutationFn: () => knowledgeApi.reindex(id),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      toast.success('Reindex started.');
+      invalidate();
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not start the reindex.'),
   });
 
   // The retrieval preview runs the exact pipeline the agent's tool uses.
@@ -95,27 +117,33 @@ export const KnowledgeBaseDetailPage = () => {
       />
 
       {health.data && !health.data.embeddingsConfigured ? (
-        <p role="status" className="mb-5 rounded-md bg-warning/10 px-3 py-2 text-sm">
-          OPENAI_API_KEY is not configured, so retrieval is running on keyword search only. Set the
-          key and reindex for semantic retrieval.
-        </p>
+        <Alert variant="warning" className="mb-5">
+          <TriangleAlert aria-hidden="true" />
+          <AlertDescription>
+            OPENAI_API_KEY is not configured, so retrieval is running on keyword search only. Set
+            the key and reindex for semantic retrieval.
+          </AlertDescription>
+        </Alert>
       ) : null}
       {health.data && health.data.chunksMissingEmbeddings > 0 ? (
-        <p role="status" className="mb-5 rounded-md bg-warning/10 px-3 py-2 text-sm">
-          {health.data.chunksMissingEmbeddings} chunks have no embedding.{' '}
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-2"
-            loading={reindex.isPending}
-            onClick={() => reindex.mutate()}
-          >
-            Reindex now
-          </Button>
-        </p>
+        <Alert variant="warning" className="mb-5">
+          <TriangleAlert aria-hidden="true" />
+          <AlertDescription className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>{health.data.chunksMissingEmbeddings} chunks have no embedding.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              loading={reindex.isPending}
+              onClick={() => reindex.mutate()}
+            >
+              Reindex now
+            </Button>
+          </AlertDescription>
+        </Alert>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
         <Card>
           <CardTitle>{editingId ? 'Edit document' : 'Add a document'}</CardTitle>
           <form
@@ -138,19 +166,17 @@ export const KnowledgeBaseDetailPage = () => {
               htmlFor="doc-category"
               hint="The retrieval classifier uses categories to narrow the search."
             >
-              <Select
+              <SimpleSelect
                 id="doc-category"
                 value={draft.category}
-                onChange={(event) =>
-                  setDraft({ ...draft, category: event.target.value as KbCategory })
+                onValueChange={(category) =>
+                  setDraft({ ...draft, category: category as KbCategory })
                 }
-              >
-                {KB_CATEGORY.map((category) => (
-                  <option key={category} value={category}>
-                    {KB_CATEGORY_LABEL[category]}
-                  </option>
-                ))}
-              </Select>
+                options={KB_CATEGORY.map((category) => ({
+                  value: category,
+                  label: KB_CATEGORY_LABEL[category],
+                }))}
+              />
             </Field>
             <Field
               label="Content"
@@ -166,7 +192,7 @@ export const KnowledgeBaseDetailPage = () => {
                 required
               />
             </Field>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button type="submit" loading={saveDocument.isPending}>
                 {editingId ? 'Save document' : 'Add document'}
               </Button>
@@ -216,7 +242,12 @@ export const KnowledgeBaseDetailPage = () => {
                 placeholder="so for 40 people would it come down a bit?"
               />
             </Field>
-            <Button type="submit" loading={search.isPending} disabled={!probe.trim()}>
+            <Button
+              type="submit"
+              loading={search.isPending}
+              disabled={!probe.trim()}
+              className="w-full sm:w-auto"
+            >
               Run retrieval
             </Button>
           </form>
@@ -258,7 +289,7 @@ export const KnowledgeBaseDetailPage = () => {
                         {passage.similarity.toFixed(2)}
                       </span>
                     </p>
-                    <p className="whitespace-pre-line text-sm text-muted-foreground">
+                    <p className="whitespace-pre-line break-words text-sm text-muted-foreground">
                       {passage.content}
                     </p>
                   </li>
@@ -281,77 +312,94 @@ export const KnowledgeBaseDetailPage = () => {
         />
       ) : null}
 
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title="Delete this document?"
+        description="The agent will no longer be able to quote anything in it. This cannot be undone."
+        confirmLabel="Delete document"
+        loading={deleteDocument.isPending}
+        onConfirm={() => {
+          if (confirmDelete) deleteDocument.mutate(confirmDelete);
+        }}
+      />
+
       {documents.data && documents.data.data.length > 0 ? (
         <Table>
-          <caption className="sr-only">Documents in this knowledge base</caption>
-          <thead>
-            <tr>
-              <Th>Title</Th>
-              <Th>Category</Th>
-              <Th>Status</Th>
-              <Th>Chunks</Th>
-              <Th>Version</Th>
-              <Th>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableCaption className="sr-only">Documents in this knowledge base</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Title</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Chunks</TableHead>
+              <TableHead>Version</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {documents.data.data.map((document) => (
-              <tr key={document.id}>
-                <Td className="font-medium">{document.title}</Td>
-                <Td>{KB_CATEGORY_LABEL[document.category]}</Td>
-                <Td>
+              <TableRow key={document.id}>
+                <TableCell label="Title" className="font-medium">
+                  {document.title}
+                </TableCell>
+                <TableCell label="Category">{KB_CATEGORY_LABEL[document.category]}</TableCell>
+                <TableCell label="Status">
                   <Badge tone={document.status === 'PUBLISHED' ? 'success' : 'neutral'}>
                     {document.status === 'PUBLISHED' ? 'Published' : 'Not published'}
                   </Badge>
-                </Td>
-                <Td className="tabular-nums">{document.chunkCount ?? 0}</Td>
-                <Td className="tabular-nums">v{document.version}</Td>
-                <Td>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditingId(document.id);
-                        setDraft({
-                          title: document.title,
-                          category: document.category,
-                          content: document.content,
-                          status: 'PUBLISHED',
-                        });
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    {confirmDelete === document.id ? (
-                      <>
+                </TableCell>
+                <TableCell label="Chunks" className="tabular-nums">
+                  {document.chunkCount ?? 0}
+                </TableCell>
+                <TableCell label="Version" className="tabular-nums">
+                  v{document.version}
+                </TableCell>
+                <TableCell label="Actions" stack>
+                  <div className="flex justify-end md:justify-start">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
-                          variant="destructive"
-                          size="sm"
-                          loading={deleteDocument.isPending}
-                          onClick={() => deleteDocument.mutate(document.id)}
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Actions for ${document.title}`}
                         >
-                          Confirm delete
+                          <MoreHorizontal aria-hidden="true" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmDelete(document.id)}
-                      >
-                        Delete
-                      </Button>
-                    )}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setEditingId(document.id);
+                            setDraft({
+                              title: document.title,
+                              category: document.category,
+                              content: document.content,
+                              status: 'PUBLISHED',
+                            });
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        >
+                          <Pencil aria-hidden="true" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onSelect={() => setConfirmDelete(document.id)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                </Td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </Table>
       ) : null}
     </>

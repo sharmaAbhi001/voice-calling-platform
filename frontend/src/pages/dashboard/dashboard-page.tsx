@@ -8,17 +8,21 @@ import {
   ErrorState,
   Spinner,
   Table,
-  Td,
-  Th,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   linkButtonClass,
 } from '@/components/ui';
 import { formatDateTime, formatDuration, maskPhone } from '@/lib/utils';
 import { callsApi } from '@/services/endpoints';
 
 const StatCard = ({ label, value }: { label: string; value: string | number }) => (
-  <Card>
-    <p className="text-sm text-muted-foreground">{label}</p>
-    <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+  <Card className="p-3 sm:p-4">
+    <p className="text-xs text-muted-foreground sm:text-sm">{label}</p>
+    <p className="mt-1 text-xl font-semibold tabular-nums sm:text-2xl">{value}</p>
   </Card>
 );
 
@@ -45,7 +49,7 @@ export const DashboardPage = () => {
       {stats.isLoading ? <Spinner label="Loading statistics" /> : null}
       {stats.isError ? <ErrorState error={stats.error} onRetry={() => void stats.refetch()} /> : null}
       {stats.data ? (
-        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-6">
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
           <StatCard label="Calls today" value={stats.data.callsToday} />
           <StatCard label="Live now" value={stats.data.liveCalls} />
           <StatCard label="Connected" value={stats.data.connected} />
@@ -75,37 +79,41 @@ export const DashboardPage = () => {
 
       {recent.data && recent.data.data.length > 0 ? (
         <Table>
-          <caption className="sr-only">The eight most recent outbound calls</caption>
-          <thead>
-            <tr>
-              <Th>Customer</Th>
-              <Th>Phone</Th>
-              <Th>Status</Th>
-              <Th>Outcome</Th>
-              <Th>Duration</Th>
-              <Th>Started</Th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableCaption className="sr-only">The eight most recent outbound calls</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Outcome</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Started</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {recent.data.data.map((call) => (
-              <tr key={call.id}>
-                <Td>
+              <TableRow key={call.id}>
+                <TableCell label="Customer">
                   <Link className="font-medium underline underline-offset-2" to={`/calls/${call.id}`}>
                     {call.contactName ?? 'Unknown contact'}
                   </Link>
-                </Td>
-                <Td className="tabular-nums">{maskPhone(call.phone)}</Td>
-                <Td>
+                </TableCell>
+                <TableCell label="Phone" className="tabular-nums">
+                  {maskPhone(call.phone)}
+                </TableCell>
+                <TableCell label="Status">
                   <CallStatusBadge status={call.status} />
-                </Td>
-                <Td>
+                </TableCell>
+                <TableCell label="Outcome">
                   <CallOutcomeBadge outcome={call.outcome} />
-                </Td>
-                <Td className="tabular-nums">{formatDuration(call.durationSeconds)}</Td>
-                <Td>{formatDateTime(call.startedAt ?? call.createdAt)}</Td>
-              </tr>
+                </TableCell>
+                <TableCell label="Duration" className="tabular-nums">
+                  {formatDuration(call.durationSeconds)}
+                </TableCell>
+                <TableCell label="Started">{formatDateTime(call.startedAt ?? call.createdAt)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </Table>
       ) : null}
     </>

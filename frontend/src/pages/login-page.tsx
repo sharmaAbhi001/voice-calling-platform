@@ -35,7 +35,7 @@ export const LoginPage = () => {
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="safe-x safe-top safe-bottom flex min-h-screen items-center justify-center px-4 py-8 supports-[height:100dvh]:min-h-[100dvh] sm:p-6">
       <Card className="w-full max-w-sm">
         <h1 className="text-lg font-semibold">Sign in to VoiceOps</h1>
         <p className="mb-5 mt-1 text-sm text-muted-foreground">

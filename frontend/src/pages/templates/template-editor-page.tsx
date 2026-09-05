@@ -25,7 +25,8 @@ import {
   ErrorState,
   Field,
   Input,
-  Select,
+  Checkbox,
+  SimpleSelect,
   Spinner,
   StatusMessage,
   Textarea,
@@ -155,7 +156,7 @@ export const TemplateEditorPage = () => {
       />
 
       <form
-        className="grid max-w-4xl gap-5"
+        className="grid max-w-4xl gap-4 sm:gap-5"
         onSubmit={(event) => {
           event.preventDefault();
           save.mutate();
@@ -197,37 +198,33 @@ export const TemplateEditorPage = () => {
             htmlFor="language"
             hint="Sets how the agent speaks and how speech is transcribed. Write the scripts below in the same language."
           >
-            <Select
+            <SimpleSelect
               id="language"
               value={form.language}
-              onChange={(event) =>
-                setForm({ ...form, language: event.target.value as AgentLanguage })
+              onValueChange={(language) =>
+                setForm({ ...form, language: language as AgentLanguage })
               }
-            >
-              {AGENT_LANGUAGE.map((code) => (
-                <option key={code} value={code}>
-                  {AGENT_LANGUAGE_LABEL[code]}
-                </option>
-              ))}
-            </Select>
+              options={AGENT_LANGUAGE.map((code) => ({
+                value: code,
+                label: AGENT_LANGUAGE_LABEL[code],
+              }))}
+            />
           </Field>
           <Field
             label="Knowledge base"
             htmlFor="knowledgeBaseId"
             hint="Without a knowledge base the agent may not state any company or product fact."
           >
-            <Select
+            <SimpleSelect
               id="knowledgeBaseId"
               value={form.knowledgeBaseId}
-              onChange={(event) => setForm({ ...form, knowledgeBaseId: event.target.value })}
-            >
-              <option value="">No knowledge base</option>
-              {bases.data?.data.map((base) => (
-                <option key={base.id} value={base.id}>
-                  {base.name}
-                </option>
-              ))}
-            </Select>
+              onValueChange={(knowledgeBaseId) => setForm({ ...form, knowledgeBaseId })}
+              placeholder="No knowledge base"
+              options={[
+                { value: '', label: 'No knowledge base' },
+                ...(bases.data?.data ?? []).map((base) => ({ value: base.id, label: base.name })),
+              ]}
+            />
           </Field>
         </Card>
 
@@ -239,31 +236,29 @@ export const TemplateEditorPage = () => {
             answers best.
           </p>
 
-          <div className="grid gap-x-5 md:grid-cols-2">
+          <div className="grid gap-x-5 sm:grid-cols-2">
             <Field
               label="Speech provider"
               htmlFor="voiceProvider"
               hint="Handles listening and speaking. Sarvam is built for Indian languages and Hindi/English mixing."
             >
-              <Select
+              <SimpleSelect
                 id="voiceProvider"
                 value={form.voiceProvider}
-                onChange={(event) =>
+                onValueChange={(voiceProvider) =>
                   // Voices are provider-specific, so a provider change resets the voice
                   // rather than sending a name the new provider will reject.
                   setForm({
                     ...form,
-                    voiceProvider: event.target.value as VoiceProvider,
+                    voiceProvider: voiceProvider as VoiceProvider,
                     voiceName: '',
                   })
                 }
-              >
-                {VOICE_PROVIDER.map((code) => (
-                  <option key={code} value={code}>
-                    {VOICE_PROVIDER_LABEL[code]}
-                  </option>
-                ))}
-              </Select>
+                options={VOICE_PROVIDER.map((code) => ({
+                  value: code,
+                  label: VOICE_PROVIDER_LABEL[code],
+                }))}
+              />
             </Field>
 
             <Field
@@ -271,18 +266,19 @@ export const TemplateEditorPage = () => {
               htmlFor="voiceName"
               hint="Leave on the default unless you have a preference."
             >
-              <Select
+              <SimpleSelect
                 id="voiceName"
                 value={form.voiceName}
-                onChange={(event) => setForm({ ...form, voiceName: event.target.value })}
-              >
-                <option value="">Provider default</option>
-                {VOICES_BY_PROVIDER[form.voiceProvider].map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.label}
-                  </option>
-                ))}
-              </Select>
+                onValueChange={(voiceName) => setForm({ ...form, voiceName })}
+                placeholder="Provider default"
+                options={[
+                  { value: '', label: 'Provider default' },
+                  ...VOICES_BY_PROVIDER[form.voiceProvider].map((voice) => ({
+                    value: voice.id,
+                    label: voice.label,
+                  })),
+                ]}
+              />
             </Field>
 
             <Field
@@ -290,19 +286,17 @@ export const TemplateEditorPage = () => {
               htmlFor="llmProvider"
               hint="Decides what the agent says. Both options support the knowledge-base lookup the guard rails depend on."
             >
-              <Select
+              <SimpleSelect
                 id="llmProvider"
                 value={form.llmProvider}
-                onChange={(event) =>
-                  setForm({ ...form, llmProvider: event.target.value as LlmProvider })
+                onValueChange={(llmProvider) =>
+                  setForm({ ...form, llmProvider: llmProvider as LlmProvider })
                 }
-              >
-                {LLM_PROVIDER.map((code) => (
-                  <option key={code} value={code}>
-                    {LLM_PROVIDER_LABEL[code]}
-                  </option>
-                ))}
-              </Select>
+                options={LLM_PROVIDER.map((code) => ({
+                  value: code,
+                  label: LLM_PROVIDER_LABEL[code],
+                }))}
+              />
             </Field>
 
             <Field
@@ -310,19 +304,17 @@ export const TemplateEditorPage = () => {
               htmlFor="backgroundAudio"
               hint="Quiet office noise makes the call sound like a person phoning from a workplace rather than a silent line."
             >
-              <Select
+              <SimpleSelect
                 id="backgroundAudio"
                 value={form.backgroundAudio}
-                onChange={(event) =>
-                  setForm({ ...form, backgroundAudio: event.target.value as BackgroundAudio })
+                onValueChange={(backgroundAudio) =>
+                  setForm({ ...form, backgroundAudio: backgroundAudio as BackgroundAudio })
                 }
-              >
-                {BACKGROUND_AUDIO.map((code) => (
-                  <option key={code} value={code}>
-                    {BACKGROUND_AUDIO_LABEL[code]}
-                  </option>
-                ))}
-              </Select>
+                options={BACKGROUND_AUDIO.map((code) => ({
+                  value: code,
+                  label: BACKGROUND_AUDIO_LABEL[code],
+                }))}
+              />
             </Field>
           </div>
         </Card>
@@ -386,7 +378,7 @@ export const TemplateEditorPage = () => {
             Every placeholder used in a script must be declared here.
           </p>
           {form.variableSchema.map((variable, index) => (
-            <div key={index} className="mb-3 grid gap-3 md:grid-cols-3">
+            <div key={index} className="mb-3 grid gap-x-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Key" htmlFor={`key-${index}`}>
                 <Input
                   id={`key-${index}`}
@@ -401,12 +393,17 @@ export const TemplateEditorPage = () => {
                   onChange={(event) => updateVariable(index, { label: event.target.value })}
                 />
               </Field>
-              <div className="flex items-end gap-3 pb-4">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+              <div className="mb-4 flex items-center gap-3 sm:mb-0 sm:items-end sm:pb-4">
+                <label
+                  htmlFor={`required-${index}`}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    id={`required-${index}`}
                     checked={variable.required}
-                    onChange={(event) => updateVariable(index, { required: event.target.checked })}
+                    onCheckedChange={(checked) =>
+                      updateVariable(index, { required: checked === true })
+                    }
                   />
                   Required
                 </label>
@@ -432,6 +429,7 @@ export const TemplateEditorPage = () => {
             type="button"
             variant="outline"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() =>
               setForm((current) => ({
                 ...current,
@@ -447,7 +445,7 @@ export const TemplateEditorPage = () => {
         </Card>
 
         <div>
-          <Button type="submit" loading={save.isPending}>
+          <Button type="submit" loading={save.isPending} className="w-full sm:w-auto">
             {isNew ? 'Create template' : 'Save changes'}
           </Button>
           {save.isError ? (
